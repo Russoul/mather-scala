@@ -13,7 +13,7 @@ object Main extends App {
     def |>(f: A => R): R = f(a)
   }
 
-  def impossible[T <: Any] : T = throw new Exception("impossible happend")
+  def impossible[T <: Any] : T = throw new Exception("impossible happened")
 
 
   sealed trait BinFn
