@@ -1,9 +1,11 @@
 import cats._
 import cats.data._
 import cats.implicits._
+import cats.syntax._
 
 import scala.reflect.ClassTag
-
+import scala.collection.immutable
+import scala.collection.mutable
 
 object Main extends App {
 
@@ -15,6 +17,11 @@ object Main extends App {
 
   def impossible[T <: Any] : T = throw new Exception("impossible happened")
 
+
+  sealed trait Assoc
+  case object AssocRight extends Assoc
+  case object AssocLeft extends Assoc
+  case object AssocNone extends Assoc
 
   sealed trait BinFn
 
@@ -34,27 +41,27 @@ object Main extends App {
 
   case object Module extends UnFn
 
-  implicit def showBinFn[T <: BinFn]: Show[T] = {
-    case Plus => "+"
-    case Minus => "-"
-    case Mult => "*"
-    case Div => "/"
+  val binFnSyms = immutable.HashMap(Plus -> "+", Minus -> "-", Mult -> "*", Div -> "/")
+  val unFnSyms = immutable.HashMap(Sqrt -> "Sqrt", Square -> "Square", Module -> "Abs")
+
+  val binFnAssoc = immutable.HashMap(Plus -> AssocLeft, Mult -> AssocLeft, Minus -> AssocNone, Div -> AssocNone)
+
+
+  implicit val showBinFn: Show[BinFn] = {
+    x => binFnSyms(x.asInstanceOf[BinFn with Product with Serializable])
   }
 
-  implicit def showUnFn[T <: UnFn]: Show[T] = {
-    case Sqrt => "Sqrt"
-    case Square => "Square"
-    case Module => "Abs"
+  implicit val showUnFn: Show[UnFn] = {
+    x => unFnSyms(x.asInstanceOf[UnFn with Product with Serializable])
+  }
+
+  implicit def showTuple3[A : Show,B : Show,C : Show] : Show[(A,B,C)] = {
+    t3 => s"(${t3._1}, ${t3._2}, ${t3._3})"
   }
 
 
   def isAssoc(fn: BinFn): Bool = {
-    fn match {
-      case Plus => true
-      case Minus => false
-      case Mult => true
-      case Div => false
-    }
+    binFnAssoc(fn.asInstanceOf[BinFn with Product with Serializable]) != AssocNone
   }
 
   def isCommut(fn: BinFn): Bool = {
@@ -66,7 +73,18 @@ object Main extends App {
     }
   }
 
-  def isWholeDivision(a: Int, b: Int): Bool = b % a == 0
+  def precedence(fn : BinFn) : Int = {
+    fn match{
+      case Plus | Minus => 6
+      case Mult | Div => 7
+    }
+  }
+
+  def getAssoc(fn : BinFn) : Assoc = {
+    binFnAssoc(fn.asInstanceOf[BinFn with Product with Serializable])
+  }
+
+  def isWholeDivision(a: Int, b: Int): Bool = a % b == 0
 
   def isPerfectSquare(a: Int): Bool = {
     val sqrt = math.sqrt(a)
@@ -211,7 +229,6 @@ object Main extends App {
           }else{
             if(isSimplifiable(f)){
               val simpl = simplifyBinFn(f) //one simplification
-
 
               simplify(simpl, cond, nat + 1)
 
@@ -370,6 +387,7 @@ object Main extends App {
 
       val next = list.map(x => simplify(x._1, _ => true, x._2))
 
+
       val zipped = next.zip(list)
 
       val filtered = for((next,prev) <- zipped if next._2 != prev._2) yield next
@@ -390,6 +408,164 @@ object Main extends App {
 
   }
 
+  //what it does: "(((*)))" => "*"
+  def removeRedundantParenthesis(str : String) : String = {
+    if(str.length < 2) return str
+
+    if(str(0) == '(' && str.last == ')') removeRedundantParenthesis(str.substring(1, str.length - 1))
+    else str
+  }
+
+  def parseBinFn(str : String) : Option[BinFn] = {
+    for(sym <- binFnSyms){
+      if(sym._2 == str) return Some(sym._1)
+    }
+    None
+  }
+
+  //levels start from 0
+  //(1 + 2 * 5) + 3 / 4 - (5/(3+3))
+  //in above example level of ^^^ `plus` is `2`
+  def findSymLevel(str: String, beginIndex : Int) : Int = {
+    var count = 0
+    for(i <- 0 until beginIndex){
+      if(str(i) == '(') count += 1
+      if(str(i) == ')') count -= 1
+    }
+    count
+  }
+
+  def show[T](t : T)(implicit showable : Show[T]) = showable.show(t)
+  val putStrLn = (t : String) => println(t)
+
+  def stringHasOnlyDigits(str : String) : Bool = {
+    for(char <- str){
+      if(char < '0' || char > '9') return false
+    }
+
+    str.nonEmpty
+  }
+
+
+
+  def stringStartsWithDigit(str : String) : Bool = str.nonEmpty && str.head >= '0' && str.last <= '9'
+
+  def stringHasWhitespace(str : String) : Bool = {
+    for(char <- str){
+      if(char == ' ') return true
+    }
+
+    false
+  }
+
+  //accepts trimmed input
+  def isValidEInt(str : String) : Bool = {
+    if(str.isEmpty) return false
+
+    if(str.head != '-'){
+      stringHasOnlyDigits(str) && str.head != '0'
+    }else{
+      stringHasOnlyDigits(str.substring(1)) && str.substring(1).head != '0'
+    }
+  }
+
+  //accepts trimmed input
+  def isValidEVar(str : String) : Bool = {
+    !stringStartsWithDigit(str) && str.nonEmpty && !stringHasWhitespace(str)
+  }
+
+
+  def parse(str_ : String) : Option[Expr] = {// (x * 2) + 3
+
+
+    def make(str_ : String) : Option[Expr] = {
+      val str = removeRedundantParenthesis(str_)
+
+
+
+      val buf = new mutable.ArrayBuffer[(BinFn, Int, Int)]()
+
+      for(i <- 0 until str.length){
+        for(j <- i to str.length){ //to here because substring endIndex may be equal to length
+          val tryStr = str.substring(i, j)
+          val maybeBinFn = parseBinFn(tryStr)
+          maybeBinFn match{
+            case Some(f) => if(findSymLevel(str, i) == 0) buf.append((f, i, j))
+            case None =>
+          }
+        }
+      }
+
+      if(buf.nonEmpty){
+        //TODO debug
+        //buf.foreach(putStrLn compose show[(BinFn, Int, Int)])
+
+        var chosen = buf.head
+        for(f <- buf){
+          if(precedence(f._1) < precedence(chosen._1)){
+            chosen = f
+          }
+        }
+
+
+        //set correct associativity if multiple associative bin fns are at the same level:
+        //x + y + z => (x + y) + z
+        if(isAssoc(chosen._1)){
+          for(f <- buf){
+            if(f._1 == chosen._1){
+              getAssoc(chosen._1) match{
+                case AssocLeft => if(f._2 > chosen._2) chosen = f
+                case AssocRight => if(f._2 < chosen._2) chosen = f
+                case _ => impossible
+              }
+            }
+          }
+        }
+
+        if(chosen._2 == 0 || chosen._3 == str.length) return None
+
+        val lhs = str.substring(0, chosen._2 - 1)
+        val rhs = str.substring(chosen._3 + 1, str.length)
+
+        //TODO debug
+        println(s"got string $str")
+
+        //TODO debug
+        println(s"op ${chosen}")
+
+        println(s"lhs ${lhs}")
+        println(s"rhs ${rhs}")
+
+        val lhsMade = make(lhs)
+        val rhsMade = make(rhs)
+
+        println(s"lhsm ${lhsMade} ${lhs}")
+        println(s"rhsm ${rhsMade} ${rhs}")
+
+        for(lhs <- lhsMade; rhs <- rhsMade) yield EBinFn(lhs, rhs, chosen._1)
+
+        //...
+      }else{ //x or 12345
+        val trimmed = str.trim
+        //TODO debug
+        println(trimmed)
+        if(isValidEInt(trimmed)){
+          //TODO debug
+          println("EInt:" + trimmed)
+          Some(EInt(Integer.parseInt(trimmed)))
+        }
+        else if(isValidEVar(trimmed)){
+          Some(EVar(trimmed))
+        }else
+          None
+      }
+    }
+
+
+    make(str_)
+
+  }
+
 
   val expr = EBinFn(EInt(1), EUnFn(EInt(4), Sqrt), Plus)
   val expr1 = EBinFn(EVar("x"), EBinFn(EVar("y"), EVar("z"), Plus), Plus)
@@ -397,15 +573,24 @@ object Main extends App {
 
   val exp0 = EBinFn(EInt(10), EInt(5), Mult)
   val exp1 = EBinFn(EInt(1), exp0, Plus)
-  val exp2 = EBinFn(exp1, EInt(6), Minus)
-  val exp3 = EBinFn(exp2, EVar("x"), Plus)
+  val exp2 = EBinFn(exp1, EInt(2), Minus)
+  val exp3 = EUnFn(exp2, Sqrt)
   val exp4 = EBinFn(exp3, EVar("x"), Plus)
+  val exp5 = EBinFn(exp4, EVar("x"), Plus)
 
-  println(s"exp4 = ${exp4.show}")
-  println("exp4 simplified = " ++simplifyUsingEquivRules(exp4, genEquivAssocCommutRecAll).show)
+  println(s"exp5 = ${exp5.show}")
+  println("exp5 simplified = " ++ simplifyUsingEquivRules(exp5, genEquivAssocCommutRecAll).show)
 
   useAssoc(expr1).foreach(x => println(x.show))
   println(simplify(expr,  _ < 2).show)
 
   genEquivAssocCommutRecAll(expr1).foreach(x => println(x.show))
+
+  println("----------------------------------")
+  parse("1 * 2 + (3 + 5) + 15 / 5").foreach{ x =>
+    val simplified = simplify(x, _ => true) //TODO simplify works incorrectly
+    println(show(x))
+    println("========>")
+    println(show(simplified))
+  }
 }
