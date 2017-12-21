@@ -254,9 +254,158 @@ object Main extends App {
     }
   }
 
+  private def genEquivAssocL(expr : Expr) : List[EBinFn] = {
+    expr match{
+      case EBinFn(EBinFn(a,b,t1),c,t2) =>
+        if (t1 == t2 && isAssoc(t1)){
+          val assoc = EBinFn(a, EBinFn(b,c,t1),t1)
+           assoc :: genEquivAssocL(assoc)
+        }else
+          Nil
+      case _ => Nil
+    }
+  }
+
+  private def genEquivAssocR(expr: Expr) : List[EBinFn] = {
+    expr match{
+      case EBinFn(a, EBinFn(b,c,t1),t2) =>
+        if(t1 == t2 && isAssoc(t2)){
+          val assoc = EBinFn(EBinFn(a,b,t1),c,t1)
+          assoc :: genEquivAssocR(assoc)
+        }else Nil
+      case _ => Nil
+    }
+  }
+
+  def genEquivAssoc(expr: Expr) : List[EBinFn] = genEquivAssocR(expr) ++ genEquivAssocL(expr)
+
+  def genEquivAssocRec(expr: Expr) : List[Expr] = {
+
+
+    def inner(f : EBinFn) : List[Expr] = {
+      val assocs = genEquivAssoc(f)
+      val all = f :: assocs
+      val list = for((EBinFn(a,b,t3)) <- all) yield{
+        val assocAs = genEquivAssoc(a)
+        val assocBs = genEquivAssoc(b)
+        if(assocAs.isEmpty && assocBs.isEmpty){
+          Nil
+        }else{
+          for(assocA <- assocAs; assocB <- assocBs) yield {
+            EBinFn(assocA, assocB, t3)
+          }
+        }
+      }
+
+      all ++ list.flatten
+    }
+
+    expr match{
+      case f@EBinFn(_, _, _) => inner(f)
+      case x => List(x)
+    }
+  }
+
+  def allLengths[A](list:List[List[A]]) : List[Int] = {
+    list map(_.length)
+  }
+
+  //TODO hacky way
+  def genEquivAssocRecAll(expr : Expr) : List[Expr] = {
+    val assocs = genEquivAssocRec(expr)
+    val allAssocs = assocs map genEquivAssocRec
+    val allAssocsLengths = allLengths(allAssocs)
+    val zipped : List[(List[Expr], Int)] = allAssocs.zip(allAssocsLengths)
+    val highest : (List[Expr], Int) = zipped.foldRight((Nil : List[Expr], 0)){(prev, acc) => if(acc._2 > prev._2) acc else prev}
+
+    highest._1.distinct
+  }
+
+
+  def genEquivCommutRec(expr: Expr) : List[Expr] = {
+    expr match{
+      case f@EBinFn(a, b, t) =>
+        if (isCommut(t)){
+          val com = EBinFn(b,a,t)
+          val all = List(f,com)
+          val ca = genEquivCommutRec(a)
+          val cb = genEquivCommutRec(b)
+
+          if(ca == List(a) && cb == List(b)){
+            all
+          }else{
+            val list = for (a <- ca ; b <- cb) yield List(EBinFn(a,b,t), EBinFn(b,a,t))
+            all ++ list.flatten
+          }
+        }else{
+          List(f)
+        }
+      case x => List(x)
+    }
+  }
+
+  def genEquivCommutRecAll(expr: Expr): List[Expr] = genEquivCommutRec(expr).distinct
+
+  def genEquivAssocCommutRecAll(expr : Expr) : List[Expr] = {
+    val l1 = for(assoc <- genEquivAssocRecAll(expr); commut <- genEquivCommutRecAll(assoc))
+      yield commut
+
+    val l2 = for(commut <- genEquivCommutRecAll(expr); assoc <- genEquivAssocRecAll(commut))
+      yield assoc
+
+    (l1 ++ l2).distinct
+  }
+
+
+
+
+  def simplifyUsingEquivRules(expr: Expr, rules : Expr => List[Expr]) : (Expr, Int) = {
+    val vars = rules(expr)
+    val simplified = vars.map(x => simplify(x, _ => true))
+
+    def inner(list : List[(Expr,Int)]) : List[(Expr,Int)] = {
+      //val simpls = list.filter(_._2 > 0)
+
+      if(list.length <= 1) return list
+
+      val next = list.map(x => simplify(x._1, _ => true, x._2))
+
+      val zipped = next.zip(list)
+
+      val filtered = for((next,prev) <- zipped if next._2 != prev._2) yield next
+
+      if(filtered.isEmpty) return list
+
+      inner(filtered)
+    }
+
+    val res = inner(simplified.filter(_._2 > 0))
+
+    if(res.nonEmpty){
+      val highest : (Expr, Int) = res.foldRight((null.asInstanceOf[Expr],0)){(prev, acc) => if(acc._2 > prev._2) acc else prev}
+      highest
+    }else{
+      (expr, 0)
+    }
+
+  }
+
+
   val expr = EBinFn(EInt(1), EUnFn(EInt(4), Sqrt), Plus)
   val expr1 = EBinFn(EVar("x"), EBinFn(EVar("y"), EVar("z"), Plus), Plus)
 
+
+  val exp0 = EBinFn(EInt(10), EInt(5), Mult)
+  val exp1 = EBinFn(EInt(1), exp0, Plus)
+  val exp2 = EBinFn(exp1, EInt(6), Minus)
+  val exp3 = EBinFn(exp2, EVar("x"), Plus)
+  val exp4 = EBinFn(exp3, EVar("x"), Plus)
+
+  println(s"exp4 = ${exp4.show}")
+  println("exp4 simplified = " ++simplifyUsingEquivRules(exp4, genEquivAssocCommutRecAll).show)
+
   useAssoc(expr1).foreach(x => println(x.show))
   println(simplify(expr,  _ < 2).show)
+
+  genEquivAssocCommutRecAll(expr1).foreach(x => println(x.show))
 }
