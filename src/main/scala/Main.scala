@@ -463,7 +463,7 @@ object Main extends App {
     if(str.isEmpty) return false
 
     if(str.head != '-'){
-      stringHasOnlyDigits(str) && str.head != '0'
+      stringHasOnlyDigits(str) && str.head != '0' || str == "0"
     }else{
       stringHasOnlyDigits(str.substring(1)) && str.substring(1).head != '0'
     }
@@ -587,8 +587,8 @@ object Main extends App {
   genEquivAssocCommutRecAll(expr1).foreach(x => println(x.show))
 
   println("----------------------------------")
-  parse("1 * 2 + (3 + 5) + 15 / 5").foreach{ x =>
-    val simplified = simplify(x, _ => true) //TODO simplify works incorrectly
+  parse("2 + x + 5 * x + 2 / 2").foreach{ x => //TODO does not simplify enough
+    val simplified = simplifyUsingEquivRules(x, genEquivAssocCommutRecAll)
     println(show(x))
     println("========>")
     println(show(simplified))
