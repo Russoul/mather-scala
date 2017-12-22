@@ -87,6 +87,8 @@ object Main extends App {
   def isWholeDivision(a: Int, b: Int): Bool = a % b == 0
 
   def isPerfectSquare(a: Int): Bool = {
+    if(a < 0) return false
+
     val sqrt = math.sqrt(a)
     val floor = math.floor(sqrt)
     floor * floor == a.toDouble
@@ -608,12 +610,25 @@ object Main extends App {
 
   println("----------------------------------==")
   //((3 + x) + ((x * 2) / x)) ; 2 + x + (x * 2) / x + 2 / 2 + 0
-  val parsed = parse("2 + x + (x * 2) / x + 2 / 2 + 0")
+  val parsed = parse("2 + x + (x * 0) / x + 2 / 2 + 0")
   println(s"parsed: ${show(parsed)}")
   parsed.foreach{ x =>
 
     val simplified = simplifyUsingEquivRules(x, genEquivAssocCommutRecAll)
     println("========>")
     println(show(simplified))
+  }
+
+
+  def perfectSquare(expr: Expr) : Option[Expr] = {
+    expr match{
+      case EInt(x) if isPerfectSquare(x) => Some(EUnFn(EInt(math.sqrt(x).toInt), Square))
+      case EBinFn(a, b, Mult) if a == b => Some(EUnFn(a, Square))
+      case EBinFn(EBinFn(EUnFn(a, Square), EBinFn(EInt(2), EBinFn(b,c,Mult), Mult), Plus), EUnFn(d, Square), Plus)
+        if a == b && c == d => Some(EUnFn(EBinFn(a,d, Plus), Square))
+      case EBinFn(EBinFn(EUnFn(a, Square), EBinFn(EInt(2), EBinFn(b,c,Mult), Mult), Minus), EUnFn(d, Square), Plus)
+        if a == b && c == d => Some(EUnFn(EBinFn(a,d, Minus), Square))
+      case _ => None
+    }
   }
 }
