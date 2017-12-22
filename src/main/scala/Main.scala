@@ -163,6 +163,9 @@ object Main extends App {
         }else{
           binFn
         }
+      /*case EBinFn(EBinFn(EInt(k1),EVar(v1), Mult), EVar(v2), Div) if v1 == v2 =>
+        //(k1 * x) / x) //should not do this as x may be 0
+        EInt(k1)*/
       case EBinFn(EBinFn(EInt(a), EInt(b), Div), EBinFn(EInt(c), EInt(d), Div), Mult) =>
         //(a/b) * (c/d)
         EBinFn(EInt(a * c), EInt(b * d), Div)
@@ -308,13 +311,13 @@ object Main extends App {
         if(assocAs.isEmpty && assocBs.isEmpty){
           Nil
         }else{
-          for(assocA <- assocAs; assocB <- assocBs) yield {
+          for(assocA <- genEquivAssocRec(a); assocB <- genEquivAssocRec(b)) yield {
             EBinFn(assocA, assocB, t3)
           }
         }
       }
 
-      all ++ list.flatten
+      (all ++ list.flatten).distinct
     }
 
     expr match{
@@ -355,7 +358,7 @@ object Main extends App {
             all ++ list.flatten
           }
         }else{
-          List(f)
+          for (a <- genEquivCommutRec(a) ; b <- genEquivCommutRec(b)) yield EBinFn(a,b,t) //TODO append vice versa commutation ?
         }
       case x => List(x)
     }
@@ -379,6 +382,8 @@ object Main extends App {
   def simplifyUsingEquivRules(expr: Expr, rules : Expr => List[Expr]) : (Expr, Int) = {
     val vars = rules(expr)
     val simplified = vars.map(x => simplify(x, _ => true))
+
+
 
     def inner(list : List[(Expr,Int)]) : List[(Expr,Int)] = {
       //val simpls = list.filter(_._2 > 0)
@@ -408,11 +413,26 @@ object Main extends App {
 
   }
 
+  //trimmed input
   //what it does: "(((*)))" => "*"
-  def removeRedundantParenthesis(str : String) : String = {
+  def removeRedundantParentheses(str : String) : String = {
     if(str.length < 2) return str
 
-    if(str(0) == '(' && str.last == ')') removeRedundantParenthesis(str.substring(1, str.length - 1))
+    if(str(0) == '(' && str.last == ')'){
+
+      var counter = 0
+      for(char <- str.substring(1, str.length - 1)){ //make sure that in this case: (3 + x) + ((x * 2) / x) first and last parentheses are not removed
+        if(char == '('){
+          counter += 1
+        }else if(char == ')'){
+          counter -= 1
+        }
+
+        if(counter < 0) return str
+      }
+
+      removeRedundantParentheses(str.substring(1, str.length - 1))
+    }
     else str
   }
 
@@ -479,8 +499,8 @@ object Main extends App {
 
 
     def make(str_ : String) : Option[Expr] = {
-      val str = removeRedundantParenthesis(str_)
-
+      val str = {val t = str_.trim; removeRedundantParentheses(t)}
+      //println(s"got $str")
 
 
       val buf = new mutable.ArrayBuffer[(BinFn, Int, Int)]()
@@ -586,10 +606,13 @@ object Main extends App {
 
   genEquivAssocCommutRecAll(expr1).foreach(x => println(x.show))
 
-  println("----------------------------------")
-  parse("2 + x + 5 * x + 2 / 2").foreach{ x => //TODO does not simplify enough
+  println("----------------------------------==")
+  //((3 + x) + ((x * 2) / x)) ; 2 + x + (x * 2) / x + 2 / 2 + 0
+  val parsed = parse("2 + x + (x * 2) / x + 2 / 2 + 0")
+  println(s"parsed: ${show(parsed)}")
+  parsed.foreach{ x =>
+
     val simplified = simplifyUsingEquivRules(x, genEquivAssocCommutRecAll)
-    println(show(x))
     println("========>")
     println(show(simplified))
   }
