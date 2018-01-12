@@ -94,6 +94,11 @@ object Main extends App {
     floor * floor == a.toDouble
   }
 
+  def GCD(a: Int, b: Int): Int = {
+    if (b == 0) return a
+    GCD(b, a % b)
+  }
+
 
   /*sealed trait Ty
   case object TyInt extends Ty
@@ -126,7 +131,20 @@ object Main extends App {
           case Plus => EInt(x + y)
           case Minus => EInt(x - y)
           case Mult => EInt(x * y)
-          case Div => if (isWholeDivision(x, y) && (y != 0)) EInt(x / y) else binFn
+          case Div => if (isWholeDivision(x, y) && (y != 0)) EInt(x / y) else {
+
+            def simpl(x : Int, y : Int) : (Int, Int) = {
+              val gcd = GCD(x,y)
+              if(gcd == 1) return (x, y)
+
+              simpl(x / gcd, y / gcd)
+            }
+
+            val gcdProc = simpl(x, y)
+
+            if(gcdProc._1 < 0 && gcdProc._2 < 0) EBinFn(EInt(-gcdProc._1), EInt(-gcdProc._2), Div) else EBinFn(EInt(gcdProc._1), EInt(gcdProc._2), Div)
+
+          }
         }
       case EBinFn(EVar(x), EVar(y), typee) =>
         if (x == y) {
@@ -171,9 +189,18 @@ object Main extends App {
       case EBinFn(EBinFn(EInt(a), EInt(b), Div), EBinFn(EInt(c), EInt(d), Div), Mult) =>
         //(a/b) * (c/d)
         EBinFn(EInt(a * c), EInt(b * d), Div)
+      case EBinFn(a, EBinFn(c, EInt(d), Div), Plus) if d != 0 => //a + c/d //where d is a number != 0
+        EBinFn(EBinFn(EBinFn(a, EInt(d), Mult), c, Plus), EInt(d), Div)
+      case EBinFn(a, EBinFn(EInt(b), EInt(c), Div), Div) if c != 0 && b != 0 => //   a / b / c where b and c numbers != 0
+        EBinFn(EBinFn(a, EInt(c), Mult), EInt(b), Div)
       case EBinFn(EBinFn(EInt(a), EInt(b), Div), EInt(c), Mult) =>
         //(a/b) * c
         EBinFn(EInt(a * c), EInt(b), Div)
+      case EBinFn(a, EInt(x), Div) if x == 1 => a // a / 1
+      case EBinFn(EBinFn(EInt(minusOne), x, Mult), EBinFn(EInt(minusOne2), y, Mult), Mult) if minusOne == minusOne2 && minusOne == -1 => // -a * (-b)
+        EBinFn(x,y,Mult)
+      case EBinFn(EBinFn(EInt(minusOne), x, Mult), EBinFn(EInt(minusOne2), y, Mult), Div) if minusOne == minusOne2 && minusOne == -1 => // -a / (-b)
+        EBinFn(x,y,Div)
       case EBinFn(x, EInt(y), typee) =>
         if (y != 0 || typee == Div) binFn else{
           typee match{
@@ -181,6 +208,13 @@ object Main extends App {
             case Plus | Minus => x
             case Div => impossible
           }
+        }
+      case EBinFn(EInt(0), y, typee) =>
+        typee match{
+          case Mult => EInt(0)
+          case Plus => y
+          case Minus => EBinFn(EInt(-1), y, Mult)
+          case Div => EInt(0)
         }
       case _ => binFn
     }
@@ -258,7 +292,9 @@ object Main extends App {
     }
   }
 
-  def useAssoc(expr : Expr) : Option[Expr] = {
+
+  //Rules we have so far
+  def useAssocL(expr : Expr) : Option[Expr] = {
     expr match{
       case EBinFn(EBinFn(a, b, t1), c, t2) =>
         if(t1 == t2 && isAssoc(t1)){
@@ -266,6 +302,12 @@ object Main extends App {
         }else{
           None
         }
+      case _ => None
+    }
+  }
+
+  def useAssocR(expr : Expr) : Option[Expr] = {
+    expr match{
       case EBinFn(a, EBinFn(b, c, t1), t2) =>
         if(t1 == t2 && isAssoc(t1)){
           Some(EBinFn(EBinFn(a, b, t1), c, t1))
@@ -275,6 +317,14 @@ object Main extends App {
       case _ => None
     }
   }
+
+  def useCommut(expr: Expr) : Option[Expr] = {
+    expr match {
+      case EBinFn(a, b, op) if isCommut(op) => Some(EBinFn(b, a, op))
+      case _ => None
+    }
+  }
+  //=========================================================================
 
   private def genEquivAssocL(expr : Expr) : List[EBinFn] = {
     expr match{
@@ -368,6 +418,9 @@ object Main extends App {
 
   def genEquivCommutRecAll(expr: Expr): List[Expr] = genEquivCommutRec(expr).distinct
 
+
+  //this function generates all possible valid combinations of given expression, valid is a sense that all generated combos are equivalent to the given one
+  //equivalent combos are generated from two rules : commutativity and associativity
   def genEquivAssocCommutRecAll(expr : Expr) : List[Expr] = {
     val l1 = for(assoc <- genEquivAssocRecAll(expr); commut <- genEquivCommutRecAll(assoc))
       yield commut
@@ -381,9 +434,14 @@ object Main extends App {
 
 
 
-  def simplifyUsingEquivRules(expr: Expr, rules : Expr => List[Expr]) : (Expr, Int) = {
+  /*def simplifyUsingEquivRules1(expr_ : Expr, rules : Expr => List[Expr]) : (Expr, Int) = {
+
+
+    //add presimplification for performance
+    val (expr,steps) = simplify(expr_, _ => true)
+
     val vars = rules(expr)
-    val simplified = vars.map(x => simplify(x, _ => true))
+    val simplified = vars.map(x => simplify(x, _ => true, steps))
 
 
 
@@ -412,6 +470,150 @@ object Main extends App {
     }else{
       (expr, 0)
     }
+
+  }*/
+
+  def simplifyUsingEquivRules2Old(expr_ : Expr, rules : Expr => List[Expr]) : (Expr, Int) = {
+
+
+    val always = (_ : Int) => true
+
+    def perf(expr: Expr, steps : Int) : (Expr, Int) = {
+      //add presimplification for performance
+      println(s"pre simple")
+      val (out,newSteps) = simplify(expr, always, steps)
+
+      if(newSteps > steps){
+        println(s"first go")
+        perf(out, newSteps)
+      }else{
+        println(s"pre gen")
+        val vars = rules(out)
+        println(s"post gen")
+
+        var i = 0
+        for(variant <- vars){
+          i += 1
+          val simpl = simplify(variant, always, newSteps)
+          if(simpl._2 > newSteps){
+            return perf(simpl._1, simpl._2)
+          }
+          println(s"checking $i out of ${vars.size}")
+        }
+
+        (out, newSteps)
+      }
+
+    }
+
+    println("in")
+    val res = perf(expr_, 0)
+    println("done")
+    res
+
+
+
+  }
+
+  def makeCombosOfRules(rules : Stream[Stream[Expr => Option[Expr]]]) : Stream[Expr => Option[Expr]] = {
+    val eachOne = rules.flatten
+
+    val res = for(list <- rules; fromEach <- list) yield{ //take rule from each list
+      for(list <- rules if !list.contains(fromEach) ; elem <- list) yield{ //apply it with each other one not from the same list
+        (expr : Expr) => fromEach(expr) match{
+          case Some(expr) => elem(expr)
+          case None => None
+        }
+      }
+    }
+
+    eachOne ++ res.flatten
+
+  }
+
+  def applyRules(expr : Expr, ruleCombos : Stream[Expr => Option[Expr]]) : Stream[Expr] = {
+    expr match{
+      case i@EInt(_) => i #:: ruleCombos.flatMap(rule => rule(i))
+      case v@EVar(_) => v #:: ruleCombos.flatMap(rule => rule(v))
+      case f@EUnFn(arg, op) =>
+        val inner = applyRules(arg, ruleCombos)
+        f #:: inner.flatMap(
+          a => ruleCombos.flatMap(
+            rule => rule(EUnFn(a, op))))
+
+      case f@EBinFn(a, b, op) =>
+        val inner1 = applyRules(a, ruleCombos)
+        val inner2 = applyRules(b, ruleCombos)
+        f #:: inner1.flatMap(
+          a => inner2.flatMap(
+            b => ruleCombos.flatMap(
+              rule => rule(EBinFn(a,b,op))
+            )
+          )
+        )
+
+    }
+  }
+
+  //trying to apply given rule to expression recursively(if it cannot apply the rule to given expr it applies it to its children); return after the first success
+  def applyRuleRec(expr : Expr, ruleCombo : Expr => Option[Expr]) : Option[Expr] = {
+    expr match{
+      case i@EInt(_) => ruleCombo(i)
+      case v@EVar(_) => ruleCombo(v)
+      case f@EUnFn(arg, op) => ruleCombo(f) match{
+        case ok@Some(_) => ok
+        case None => for(ok <- applyRuleRec(arg, ruleCombo)) yield EUnFn(ok, op)
+      }
+      case f@EBinFn(a, b, _) => ruleCombo(f) match{
+        case ok@Some(_) => ok
+        case None => applyRuleRec(a, ruleCombo) match {
+          case ok@Some(_) => ok
+          case None => applyRuleRec(b, ruleCombo)
+        }
+      }
+    }
+  }
+
+
+
+  def simplifyUsingEquivRules2(expr_ : Expr, ruleCombos : Stream[Expr => Option[Expr]]) : (Expr, Int) = {
+
+
+    val always = (_ : Int) => true
+
+    def perf(expr: Expr, steps : Int) : (Expr, Int) = {
+      //add presimplification for performance
+      //println(s"pre simple")
+      val (out,newSteps) = simplify(expr, always, steps)
+
+      if(newSteps > steps){
+        //println(s"first go")
+        perf(out, newSteps)
+      }else{
+
+        val allPosibilities = applyRules(out, ruleCombos)
+        //println("num of possibilities: " + allPosibilities.size)
+        //println("num of combos: " + ruleCombos.size)
+
+
+        for(possibility <- allPosibilities){
+          //println(s"posibility: ${possibility.show}")
+          val simpl = simplify(possibility, always, newSteps)
+
+          if(simpl._2 > newSteps) return perf(simpl._1, simpl._2)
+        }
+
+        (out, newSteps)
+      }
+
+    }
+
+    //println("in")
+    val res = perf(expr_, 0)
+    //println("done")
+    res
+
+
 
   }
 
@@ -588,8 +790,18 @@ object Main extends App {
 
   }
 
+  val rules = Stream(Stream(useAssocL _, useAssocR _), Stream(useCommut _))
+  val combos = makeCombosOfRules(rules)
 
-  val expr = EBinFn(EInt(1), EUnFn(EInt(4), Sqrt), Plus)
+  /*def isTotallyThat(this_ : Expr, that : Expr) : Bool = {
+    simplifyUsingEquivRules2(expr, rules)._1 == that
+  }
+
+  def isTotallyZero(expr : Expr) : Bool = {
+    isTotallyThat(expr, EInt(0))
+  }*/
+
+ /* val expr = EBinFn(EInt(1), EUnFn(EInt(4), Sqrt), Plus)
   val expr1 = EBinFn(EVar("x"), EBinFn(EVar("y"), EVar("z"), Plus), Plus)
 
 
@@ -601,26 +813,194 @@ object Main extends App {
   val exp5 = EBinFn(exp4, EVar("x"), Plus)
 
   println(s"exp5 = ${exp5.show}")
-  println("exp5 simplified = " ++ simplifyUsingEquivRules(exp5, genEquivAssocCommutRecAll).show)
+  println("exp5 simplified = " ++ simplifyUsingEquivRules2(exp5, combos).show)
 
-  useAssoc(expr1).foreach(x => println(x.show))
+  useAssocR(expr1).foreach(x => println(x.show))
   println(simplify(expr,  _ < 2).show)
 
-  genEquivAssocCommutRecAll(expr1).foreach(x => println(x.show))
+  genEquivAssocCommutRecAll(expr1).foreach(x => println(x.show))*/
 
   println("----------------------------------==")
   //((3 + x) + ((x * 2) / x)) ; 2 + x + (x * 2) / x + 2 / 2 + 0
-  val parsed = parse("2 + x + (x * 0) / x + 2 / 2 + 0")
+  val parsed = parse("x + y + z + 2 * x - 0 * 5 + 4 * y + 2 * z")
   println(s"parsed: ${show(parsed)}")
   parsed.foreach{ x =>
 
-    val simplified = simplifyUsingEquivRules(x, genEquivAssocCommutRecAll)
+    val simplified = simplifyUsingEquivRules2(x, combos)
     println("========>")
     println(show(simplified))
   }
 
+  val mat = Matrix(3, 3, Array(
+    e"1", e"2", e"1",
+    e"6", e"8", e"7",
+    e"1", e"2", e"9 + p"
+  ))
 
-  def perfectSquare(expr: Expr) : Option[Expr] = {
+  val vec = Vector(Array(
+    e"1",  e"2" , e"3" ))
+
+  println(solveLinearSystemSingular(mat, vec).simplifyAll().show)
+
+
+  implicit class ExprParser(val sc: StringContext) extends AnyVal {
+    def e(args : Any*) : Expr = parse(sc.parts.head).get
+
+  }
+
+
+  case class Vector(val array : Array[Expr]){
+    def apply(i : Int) : Expr = {
+      array(i)
+    }
+
+    def update(i : Int, expr: Expr): Unit = {
+      array(i) = expr
+    }
+
+    def simplifyAll() : Vector = {
+      val ret = array.clone()
+      for( i <- 0 until array.length){
+        ret(i) = simplifyUsingEquivRules2(this(i), combos)._1
+      }
+
+      Vector(ret)
+    }
+  }
+
+  //each op returns a new matrix
+  case class Matrix(val n : Int, val m : Int, val array : Array[Expr]){
+    def apply(i : Int, j : Int) : Expr = {
+      array(i * m + j)
+    }
+
+    def update(i : Int, j : Int, expr: Expr): Unit = {
+      array(i * m + j) = expr
+    }
+
+    def simplifyAll() : Matrix = {
+      val ret = Matrix.newZeroMatrix(n, m)
+      for( i <- 0 until n ; j <- 0 until m ){
+        ret(i, j) = simplifyUsingEquivRules2(this(i, j), combos)._1
+      }
+
+      ret
+    }
+
+    def appendColumn(vec : Vector) : Option[Matrix] = {
+      if(vec.array.length != this.n) return None
+
+      val ret = Matrix.newZeroMatrix(n, m + 1)
+      for( i <- 0 until n ; j <- 0 until m ){
+        ret(i, j) = this(i,j)
+      }
+
+      for(i <- 0 until vec.array.length){
+        ret(i, m) = vec(i)
+      }
+
+      Some(ret)
+    }
+
+  }
+
+
+
+  object Matrix{
+    def newZeroMatrix(n : Int, m : Int) : Matrix = {
+      val ar = new Array[Expr](n * m)
+      for(i <- 0 until ar.length){
+        ar(i) = EInt(0)
+      }
+
+      Matrix(n, m, ar)
+    }
+
+  }
+
+  implicit def showMatrix[M <: Matrix]: Show[M] = {
+    mat =>
+      var str = s"Matrix(${mat.n} x ${mat.m})\n"
+      for(i <- 0 until mat.n){
+        for(j <- 0 until mat.m){
+          str += mat(i,j).show + " "
+        }
+        str += "\n"
+      }
+
+      str
+  }
+
+  implicit def showVector[V <: Vector]: Show[V] = {
+    vec =>
+      var str = s"Vector(${vec.array.length})\n"
+      for(i <- vec.array.indices){
+        str += vec(i).show + " "
+      }
+
+      str += "\n"
+
+      str
+  }
+
+
+  def matrixToHigherTriangularFormNoZeroChecks(mat : Matrix, i : Int = 0): Matrix ={
+
+    if(i + 1 == mat.m) return mat
+
+    val onDiagonal = mat(i, i)
+    val one = EInt(1)
+
+    val newMat = mat.copy()
+
+    newMat(i, i) = one
+
+    for(j <- i + 1 until mat.m){
+      newMat(i, j) = EBinFn(mat(i, j), onDiagonal, Div)
+    }
+
+    for(k <- i + 1 until mat.n){
+      val el = newMat(k, i)//will become 0
+      newMat(k,i) = EInt(0)
+      for(j <- i + 1 until mat.m){
+        newMat(k, j) = EBinFn(newMat(k,j), EBinFn(EBinFn(EInt(-1), newMat(i, j), Mult), el, Mult), Plus) //mat(k, j) - mat(i, j) * el
+      }
+    }
+
+    println(s"step $i ${newMat.simplifyAll().show}")
+
+    matrixToHigherTriangularFormNoZeroChecks(newMat.simplifyAll(), i + 1)
+  }
+
+  def solveLinearSystemSingular(mat : Matrix, vec : Vector) : Vector = {
+    println(s"input mat ${mat.appendColumn(vec).get.simplifyAll().show}")
+    val tr = matrixToHigherTriangularFormNoZeroChecks(mat.appendColumn(vec).get)
+    println(s"found matrix: ${tr.simplifyAll().show}")
+    val ar = new Array[Expr](vec.array.length)
+
+    for(i <- ar.length - 1 to 0 by -1){
+      val ii = tr(i,i)
+
+      val last = tr(i, tr.m - 1)
+
+      var expr = last
+
+      for(j <- tr.m - 2 until i by -1){
+        expr = EBinFn(expr, EBinFn(EBinFn(ar(j), tr(i,j), Mult), EInt(-1), Mult), Plus)
+      }
+
+      ar(i) = EBinFn(expr, ii, Div)
+
+    }
+
+
+    val res = Vector(ar)
+
+    res
+  }
+
+
+  /*def perfectSquare(expr: Expr) : Option[Expr] = {
     expr match{
       case EInt(x) if isPerfectSquare(x) => Some(EUnFn(EInt(math.sqrt(x).toInt), Square))
       case EBinFn(a, b, Mult) if a == b => Some(EUnFn(a, Square))
@@ -630,5 +1010,5 @@ object Main extends App {
         if a == b && c == d => Some(EUnFn(EBinFn(a,d, Minus), Square))
       case _ => None
     }
-  }
+  }*/
 }
