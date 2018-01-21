@@ -42,7 +42,7 @@ object Mather {
   case object Module extends UnFn
 
   val binFnSyms = immutable.HashMap(Plus -> "+", Minus -> "-", Mult -> "*", Div -> "/")
-  val unFnSyms = immutable.HashMap(Sqrt -> "Sqrt", Square -> "Square", Module -> "Abs")
+  val unFnSyms = immutable.HashMap(Sqrt -> "sqrt", Square -> "square", Module -> "abs")
 
   val binFnAssoc = immutable.HashMap(Plus -> AssocLeft, Mult -> AssocLeft, Minus -> AssocNone, Div -> AssocNone)
 
@@ -106,6 +106,16 @@ object Mather {
   case object TyVar extends Ty
   case class TyUnFn[A <: Ty, F <: UnFn](a : A, f : F) extends Ty*/
 
+  //TODO VERY IMPORTANT NOTICE !!!!!!!
+  //In order to simplify things A LOT + make them mathematically (theoretically) correct
+  //we assume that every expression IS a FUNCTION
+  //i.e
+  //EInt(1) is a function of unknown number of arguments that returns a constant value `1` at each point of its domain
+  //EConst(name) (to be added) is a function of unknown number of arguments that returns some unknown constant value (or parameter if you will) at each point of its domain
+  //EVar(name) is a function of one argument - `name`, which is equal to its variable at each point of its domain
+  //notice about domains:
+  //we should somehow create a notation to express a domain of a function
+  //EUnFn and EBinFn are complex functions (functions of functions) TODO write more about complex functions
   sealed trait Expr
 
   case class EVar(name: String) extends Expr
@@ -640,9 +650,33 @@ object Mather {
     else str
   }
 
+  //the amout of opening brackets must be equal to the amout of closing brackets
+  def areParenthesesValid(str : String) : Bool = {
+    var counter = 0
+    for(char <- str){
+      if(char == ')') counter += 1
+      else if(char == '(') counter -= 1
+    }
+
+    counter == 0
+  }
+
   def parseBinFn(str : String) : Option[BinFn] = {
     for(sym <- binFnSyms){
       if(sym._2 == str) return Some(sym._1)
+    }
+    None
+  }
+
+  //example input: sqrt(2 + 5 * pow(1,2)) -> result should be Some(sqrt)
+  def parseUnFn(str : String) : Option[(UnFn,String)] = {
+    for((value,sym) <- unFnSyms){
+      val pattern = (s"^$sym\\s*\\((.*)\\)" + "$").r
+      val result = pattern.findFirstMatchIn(str).map(_.group(1))
+      val fil = result filter areParenthesesValid //validity of parentheses of the argument to $sym is checked here
+      val res = fil.map(x => (value, x) )
+
+      if(res.isDefined) return res
     }
     None
   }
@@ -708,6 +742,7 @@ object Mather {
 
 
       val buf = new mutable.ArrayBuffer[(BinFn, Int, Int)]()
+      //every unary function has its precedence above any binary function //TODO for now ?
 
       for(i <- 0 until str.length){
         for(j <- i to str.length){ //to here because substring endIndex may be equal to length
@@ -715,7 +750,8 @@ object Mather {
           val maybeBinFn = parseBinFn(tryStr)
           maybeBinFn match{
             case Some(f) => if(findSymLevel(str, i) == 0) buf.append((f, i, j))
-            case None =>
+            case None => ()
+
           }
         }
       }
@@ -773,15 +809,24 @@ object Mather {
         val trimmed = str.trim
         //TODO debug
         println(trimmed)
-        if(isValidEInt(trimmed)){
-          //TODO debug
-          println("EInt:" + trimmed)
-          Some(EInt(Integer.parseInt(trimmed)))
+
+        val maybeUnFn = parseUnFn(trimmed)
+        maybeUnFn match{
+          case Some(f) =>
+            for(arg <- make(f._2)) yield EUnFn(arg, f._1)
+          case None =>
+            if(isValidEInt(trimmed)){
+              //TODO debug
+              println("EInt:" + trimmed)
+              Some(EInt(Integer.parseInt(trimmed)))
+            }
+            else if(isValidEVar(trimmed)){
+              Some(EVar(trimmed))
+            }else
+              None
         }
-        else if(isValidEVar(trimmed)){
-          Some(EVar(trimmed))
-        }else
-          None
+
+
       }
     }
 

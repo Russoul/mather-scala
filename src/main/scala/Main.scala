@@ -39,27 +39,38 @@ object Main extends App {
 
   genEquivAssocCommutRecAll(expr1).foreach(x => println(x.show))*/
 
-  println("----------------------------------==")
-  //((3 + x) + ((x * 2) / x)) ; 2 + x + (x * 2) / x + 2 / 2 + 0
-  val parsed = parse("x + y + z + 2 * x - 0 * 5 + 4 * y + 2 * z")
-  println(s"parsed: ${show(parsed)}")
-  parsed.foreach{ x =>
+  //TODO mark debug message that they are debug messages
+  //TODO add simplification rule : x * 1 == x
+  //TODO make sure we do not have equivalent simplification rules, e.x: 0 * x == x * 0 == 0
+  val simplify = (e : Expr) => simplifyUsingEquivRules2(e, combos)
 
-    val simplified = simplifyUsingEquivRules2(x, combos)
-    println("========>")
-    println(show(simplified))
+  val parsed1 = parse("sqrt (x * 1)")
+  println("-----------------------------------------------------")
+  parsed1.foreach(x => println(show(simplify(x))))
+
+  def ftest1(): Unit ={
+    println("----------------------------------==")
+    //((3 + x) + ((x * 2) / x)) ; 2 + x + (x * 2) / x + 2 / 2 + 0
+    val parsed = parse("x + y + z + 2 * x - 0 * 5 + 4 * y + 2 * z")
+    println(s"parsed: ${show(parsed)}")
+    parsed.foreach{ x =>
+
+      val simplified = simplifyUsingEquivRules2(x, combos)
+      println("========>")
+      println(show(simplified))
+    }
+
+    val mat = Matrix(3, 3, Array(
+      e"1", e"2", e"1",
+      e"6", e"8", e"7",
+      e"1", e"2", e"9 + p"
+    ))
+
+    val vec = Vector(Array(
+      e"1",  e"2" , e"3" ))
+
+    println(solveLinearSystemSingular(mat, vec).simplifyAll().show)
   }
-
-  val mat = Matrix(3, 3, Array(
-    e"1", e"2", e"1",
-    e"6", e"8", e"7",
-    e"1", e"2", e"9 + p"
-  ))
-
-  val vec = Vector(Array(
-    e"1",  e"2" , e"3" ))
-
-  println(solveLinearSystemSingular(mat, vec).simplifyAll().show)
 
 
 }
