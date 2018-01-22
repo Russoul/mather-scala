@@ -64,14 +64,14 @@ object TestMather{
 
 
     val simplifyFull = (e : Expr) => simplifyUsingEquivRules2(e, combos)
-    val simplifyOneStep = (e : Expr) => simplify(e, _ < 1)._1
+    val simplifyOneStep = (e : Expr) => simplify(e, _ < 5)._1
 
     e"1 + 1"
     e"2 * 1 + 5 * sqrt(5)" //<-- those will throw None.get exception if their expressions can not be parsed
     e"-1 * x + y"
     e"1+2"
     assert(simplifyOneStep(e"sin(pi/4)") == e"sqrt(2)/2")
-    println(simplifyFull(e"sin(pi/4) + sin(5*pi/4)").show) //TODO output is incorrect, debug
+    println(simplifyFull(e"sin(x) - sin(x)").show) //TODO output is incorrect, debug
 
     //TODO `-x` cannot be parsed use `-1 * x` for now
     //TODO test sin simplifications

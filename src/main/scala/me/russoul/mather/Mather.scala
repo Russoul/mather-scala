@@ -112,6 +112,15 @@ object Mather {
     GCD(b, a % b)
   }
 
+  def isConst(expr : Expr) : Bool = { //returns true if the function returns constant value for all inputs(this actually means that there are no variables inside its tree)
+    expr match{
+      case EInt(_) | EConst(_) => true
+      case EVar(_) => false
+      case EUnFn(x, _) => isConst(x)
+      case EBinFn(x,y,_) => isConst(x) && isConst(y)
+    }
+  }
+
 
   /*sealed trait Ty
   case object TyInt extends Ty
@@ -152,7 +161,7 @@ object Mather {
 
   def simplifyBinFn(binFn: EBinFn): Expr = {
     binFn match {
-      case EBinFn(EInt(x), EInt(y), typee) =>
+      case EBinFn(EInt(x), EInt(y), typee) =>             //<--------  Int # Int
         typee match {
           case Plus => EInt(x + y)
           case Minus => EInt(x - y)
@@ -172,7 +181,7 @@ object Mather {
 
           }
         }
-      case EBinFn(EVar(x), EVar(y), typee) =>
+      case EBinFn(EVar(x), EVar(y), typee) =>          //<---------- x # y
         if (x == y) {
           typee match {
             case Plus => EBinFn(EInt(2), EVar(y), Mult)
@@ -180,43 +189,54 @@ object Mather {
             case Div => EInt(1)
             case _ => binFn
           }
-        } else {
-          binFn
-        }
-      case EBinFn(EBinFn(EInt(k1), EVar(v1), Mult), EBinFn(EInt(k2), EVar(v2), Mult), typee) =>
+        } else binFn
+      case EBinFn(EConst(x), EConst(y), typee) =>          //<---------- x # y
+        if (x == y) {
+          typee match {
+            case Plus => EBinFn(EInt(2), EVar(y), Mult)
+            case Minus => EInt(0)
+            case Div => EInt(1)
+            case _ => binFn
+          }
+        } else binFn
+      case EBinFn(EBinFn(EInt(k1), v1, Mult), EBinFn(EInt(k2), v2, Mult), typee) =>
         //TODO k1 and k2 can be rational numbers
-        //(k1 * x) (_) (k2 * y)
-        if (v1 == v2){
+        //(k1 * x) # (k2 * y)
+        if (v1 == v2 && isConst(v1)){//if v1 == v2 and are constants we can safely performance the following ops:
           typee match{
-            case Plus => if(k1 + k2 != 0) EBinFn(EInt(k1 + k2), EVar(v1), Mult) else EInt(0)
-            case Minus => if(k1 - k2 != 0) EBinFn(EInt(k1 - k2), EVar(v1), Mult) else EInt(0)
+            case Plus => if(k1 + k2 != 0) EBinFn(EInt(k1 + k2), v1, Mult) else EInt(0)
+            case Minus => if(k1 - k2 != 0) EBinFn(EInt(k1 - k2), v1, Mult) else EInt(0)
             case Mult => binFn
             case Div => EBinFn(EInt(k1), EInt(k2), Div)
           }
-        }else{
-          binFn
-        }
-      case EBinFn(EVar(v1), EBinFn(EInt(k2), EVar(v2), Mult), typee) =>
+        }else binFn
+      case EBinFn(v1, EBinFn(EInt(k2), v2, Mult), typee) =>
         //TODO k1 and k2 can be rational numbers
-        //(1 * x) (_) (k2 * y)
-        if (v1 == v2){
+        //x # (k2 * y)
+        if (v1 == v2 && isConst(v1)){
           typee match{
-            case Plus => if(1 + k2 != 0) EBinFn(EInt(1 + k2), EVar(v1), Mult) else EInt(0)
-            case Minus => if(1 - k2 != 0) EBinFn(EInt(1 - k2), EVar(v1), Mult) else EInt(0)
+            case Plus => if(1 + k2 != 0) EBinFn(EInt(1 + k2), v1, Mult) else EInt(0)
+            case Minus => if(1 - k2 != 0) EBinFn(EInt(1 - k2), v1, Mult) else EInt(0)
             case Mult => binFn
             case Div => EBinFn(EInt(1), EInt(k2), Div)
           }
         }else{
           binFn
         }
-      /*case EBinFn(EBinFn(EInt(k1),EVar(v1), Mult), EVar(v2), Div) if v1 == v2 =>
-        //(k1 * x) / x) //should not do this as x may be 0
-        EInt(k1)*/
+
+      case EBinFn(EBinFn(x, EInt(a), Div), EInt(b), Mult) if a == b && a != 0 => x //  x / a * a == x if a != 0
+      case EBinFn(EBinFn(x, EInt(a), Mult), EInt(b), Div) if a == b && a != 0 => x //  x * a / a == x if a != 0
+
       case EBinFn(EBinFn(EInt(a), EInt(b), Div), EBinFn(EInt(c), EInt(d), Div), Mult) =>
         //(a/b) * (c/d)
         EBinFn(EInt(a * c), EInt(b * d), Div)
-      case EBinFn(a, EBinFn(c, EInt(d), Div), Plus) if d != 0 => //a + c/d //where d is a number != 0
-        EBinFn(EBinFn(EBinFn(a, EInt(d), Mult), c, Plus), EInt(d), Div)
+      case e"$a + $c / $di" => //a + c/d //where d is a number != 0
+        di match{
+          case EInt(d) if d != 0 =>
+            e"($a * $di + $c) / $di"
+          case _ => binFn
+        }
+
       case EBinFn(a, EBinFn(EInt(b), EInt(c), Div), Div) if c != 0 && b != 0 => //   a / b / c where b and c numbers != 0
         EBinFn(EBinFn(a, EInt(c), Mult), EInt(b), Div)
       case EBinFn(EBinFn(EInt(a), EInt(b), Div), EInt(c), Mult) =>
@@ -624,7 +644,6 @@ object Mather {
       //println(s"pre simple")
       val (out,newSteps) = simplify(expr, always, steps)
 
-
       if(newSteps > steps){
         //println(s"first go")
         perf(out, newSteps)
@@ -906,7 +925,14 @@ object Mather {
         }
       }
 
-      def apply(args : Any*) : Expr = parse(sc.parts.head).get
+      def apply(args : Any*) : Expr = {
+        val mapped = args.map {
+          case expr: Expr => expr.show
+          case str : String => str
+          case _ => throw new Exception("unsupported interpolation type")
+        }
+        parse(sc.s(mapped : _*)).get
+      }
 
       def unapplySeq(expr : Expr): Option[Seq[Expr]] = {
         val n = sc.parts.length
