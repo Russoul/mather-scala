@@ -1,16 +1,13 @@
-import cats._
-import cats.data._
+package me.russoul.mather
+
 import cats.implicits._
+import me.russoul.mather.Mather.{Expr, Matrix, Vector, combos, parse, show, simplifyUsingEquivRules2, solveLinearSystemSingular}
 //import cats.syntax._
 
-import scala.reflect.ClassTag
-import scala.collection.immutable
-import scala.collection.mutable
-import Mather._
+import me.russoul.mather.Mather._
 
-object Main extends App {
+object Main {
 
-  
 
   /*def isTotallyThat(this_ : Expr, that : Expr) : Bool = {
     simplifyUsingEquivRules2(expr, rules)._1 == that
@@ -42,11 +39,27 @@ object Main extends App {
   //TODO mark debug message that they are debug messages
   //TODO add simplification rule : x * 1 == x
   //TODO make sure we do not have equivalent simplification rules, e.x: 0 * x == x * 0 == 0
-  val simplify = (e : Expr) => simplifyUsingEquivRules2(e, combos)
+  //TODO dynamic refinements are good to be used here for debug and for self explaned parameter constraints(port my scalac plugin for this to dotty ?)
 
-  val parsed1 = parse("sqrt (x * 1)")
-  println("-----------------------------------------------------")
-  parsed1.foreach(x => println(show(simplify(x))))
+  //def matrixMultiply(a : Matrix, b : Matrix)(ref:R[a.m == b.n]) ==>
+  //def matrixMultiply(a : Matrix, b : Matrix){
+  //  assume(a.m == b.n)
+  //  ...
+  //}
+
+
+  def main(args : Array[String]) : Unit = {
+    val simplify = (e : Expr) => simplifyUsingEquivRules2(e, combos)
+
+    val parsed1 = parse("sqrt (x * 1)")
+    println("-----------------------------------------------------")
+    parsed1.foreach(x => println(show(simplify(x))))
+
+    e"abs(sqrt(x + 1) + y)" match{
+      case e"abs(sqrt($x) + $y)" => println(s"done $x $y")
+      case _ =>
+    }
+  }
 
   def ftest1(): Unit ={
     println("----------------------------------==")

@@ -1,11 +1,10 @@
+package me.russoul.mather
+
 import cats._
-import cats.data._
 import cats.implicits._
 //import cats.syntax._
 
-import scala.reflect.ClassTag
-import scala.collection.immutable
-import scala.collection.mutable
+import scala.collection.{immutable, mutable}
 
 object Mather {
 
@@ -18,10 +17,11 @@ object Mather {
   def impossible[T <: Any] : T = throw new Exception("impossible happened")
 
 
+  //notational associativity
   sealed trait Assoc
   case object AssocRight extends Assoc
   case object AssocLeft extends Assoc
-  case object AssocNone extends Assoc
+  //case object AssocNone extends Assoc
 
   sealed trait BinFn
 
@@ -44,7 +44,7 @@ object Mather {
   val binFnSyms = immutable.HashMap(Plus -> "+", Minus -> "-", Mult -> "*", Div -> "/")
   val unFnSyms = immutable.HashMap(Sqrt -> "sqrt", Square -> "square", Module -> "abs")
 
-  val binFnAssoc = immutable.HashMap(Plus -> AssocLeft, Mult -> AssocLeft, Minus -> AssocNone, Div -> AssocNone)
+  val binFnAssoc = immutable.HashMap(Plus -> AssocLeft, Mult -> AssocLeft, Minus -> AssocLeft, Div -> AssocLeft)
 
 
   implicit val showBinFn: Show[BinFn] = {
@@ -61,7 +61,12 @@ object Mather {
 
 
   def isAssoc(fn: BinFn): Bool = {
-    binFnAssoc(fn.asInstanceOf[BinFn with Product with Serializable]) != AssocNone
+    fn match {
+      case Plus => true
+      case Minus => false
+      case Mult => true
+      case Div => false
+    }
   }
 
   def isCommut(fn: BinFn): Bool = {
@@ -80,6 +85,7 @@ object Mather {
     }
   }
 
+  //returns notational associativity
   def getAssoc(fn : BinFn) : Assoc = {
     binFnAssoc(fn.asInstanceOf[BinFn with Product with Serializable])
   }
@@ -661,9 +667,13 @@ object Mather {
     counter == 0
   }
 
-  def parseBinFn(str : String) : Option[BinFn] = {
+  //substring must be equal to sum defined bin fn symbol
+  //full string must contain no empty lhs and rhs relative to substring
+  def parseBinFn(substring : String, fullstring : String) : Option[BinFn] = {
     for(sym <- binFnSyms){
-      if(sym._2 == str) return Some(sym._1)
+      if(sym._2 == substring){
+        if(fullstring.matches(s"[\\s\\S]*\\S+[\\s\\S]*\\$substring[\\s\\S]*\\S+[\\s\\S]*")) return Some(sym._1)
+      }
     }
     None
   }
@@ -706,7 +716,7 @@ object Mather {
 
 
 
-  def stringStartsWithDigit(str : String) : Bool = str.nonEmpty && str.head >= '0' && str.last <= '9'
+  def stringStartsWithDigit(str : String) : Bool = str.nonEmpty && str.head >= '0' && str.head <= '9'
 
   def stringHasWhitespace(str : String) : Bool = {
     for(char <- str){
@@ -747,7 +757,7 @@ object Mather {
       for(i <- 0 until str.length){
         for(j <- i to str.length){ //to here because substring endIndex may be equal to length
           val tryStr = str.substring(i, j)
-          val maybeBinFn = parseBinFn(tryStr)
+          val maybeBinFn = parseBinFn(tryStr, str)
           maybeBinFn match{
             case Some(f) => if(findSymLevel(str, i) == 0) buf.append((f, i, j))
             case None => ()
@@ -758,49 +768,49 @@ object Mather {
 
       if(buf.nonEmpty){
         //TODO debug
-        //buf.foreach(putStrLn compose show[(BinFn, Int, Int)])
+        //buf.foreach(putStrLn compose show)
 
         var chosen = buf.head
         for(f <- buf){
-          if(precedence(f._1) < precedence(chosen._1)){
+          if(precedence(f._1) <= precedence(chosen._1)){ //choose the last one with least precedence
             chosen = f
           }
         }
 
+        //println("chosen " + chosen)
+
 
         //set correct associativity if multiple associative bin fns are at the same level:
         //x + y + z => (x + y) + z
-        if(isAssoc(chosen._1)){
-          for(f <- buf){
-            if(f._1 == chosen._1){
-              getAssoc(chosen._1) match{
-                case AssocLeft => if(f._2 > chosen._2) chosen = f
-                case AssocRight => if(f._2 < chosen._2) chosen = f
-                case _ => impossible
-              }
+        for(f <- buf){
+          if(f._1 == chosen._1){
+            getAssoc(chosen._1) match{
+              case AssocLeft => if(f._2 > chosen._2) chosen = f //choose the rightmost first
+              case AssocRight => if(f._2 < chosen._2) chosen = f //choose the leftmost first
             }
           }
         }
 
-        if(chosen._2 == 0 || chosen._3 == str.length) return None
+        if(chosen._2 == 0 || chosen._3 == str.length) return None //symbol (operator) of bin starts from the first char of the string or from the last one
 
-        val lhs = str.substring(0, chosen._2 - 1)
-        val rhs = str.substring(chosen._3 + 1, str.length)
-
-        //TODO debug
-        println(s"got string $str")
+        val lhs = str.substring(0, chosen._2)
+        val rhs = str.substring(chosen._3, str.length)
 
         //TODO debug
-        println(s"op ${chosen}")
+        //println(s"got string $str")
 
-        println(s"lhs ${lhs}")
-        println(s"rhs ${rhs}")
+        //TODO debug
+        //println(s"op ${chosen}")
+
+        //println(s"lhs ${lhs}")
+        //println(s"rhs ${rhs}")
+
 
         val lhsMade = make(lhs)
         val rhsMade = make(rhs)
 
-        println(s"lhsm ${lhsMade} ${lhs}")
-        println(s"rhsm ${rhsMade} ${rhs}")
+        //println(s"lhsm ${lhsMade} ${lhs}")
+        //println(s"rhsm ${rhsMade} ${rhs}")
 
         for(lhs <- lhsMade; rhs <- rhsMade) yield EBinFn(lhs, rhs, chosen._1)
 
@@ -808,7 +818,7 @@ object Mather {
       }else{ //x or 12345
         val trimmed = str.trim
         //TODO debug
-        println(trimmed)
+        //println(trimmed)
 
         val maybeUnFn = parseUnFn(trimmed)
         maybeUnFn match{
@@ -817,7 +827,7 @@ object Mather {
           case None =>
             if(isValidEInt(trimmed)){
               //TODO debug
-              println("EInt:" + trimmed)
+              //println("EInt:" + trimmed)
               Some(EInt(Integer.parseInt(trimmed)))
             }
             else if(isValidEVar(trimmed)){
@@ -825,8 +835,6 @@ object Mather {
             }else
               None
         }
-
-
       }
     }
 
@@ -839,8 +847,43 @@ object Mather {
   val combos = makeCombosOfRules(rules)
 
 
-  implicit class ExprParser(val sc: StringContext) extends AnyVal {
-    def e(args : Any*) : Expr = parse(sc.parts.head).get
+  implicit class ExprParser(val sc: StringContext){
+
+    object e{
+
+      private def deconstructTree(names : List[String], m: Expr, original : Expr, result : List[Expr]) : Option[List[Expr]] = {
+        (m, original) match{
+          case (EVar(x), expr) if names.contains(x) => Some(expr :: result) //found
+          case (EInt(_), _) => None
+          case (EUnFn(x1, _), EUnFn(x2,_)) => deconstructTree(names, x1, x2, result)
+          case (EBinFn(x1,y1,_), EBinFn(x2,y2,_)) =>
+            val t1 = deconstructTree(names, x1, x2, result)
+            t1 match{
+              case Some(t) =>
+                val t2 = deconstructTree(names, y1, y2, result)
+                t2 match {
+                  case Some(k) => Some(t ++ k)
+                  case None => Some(t)
+                }
+              case None => deconstructTree(names, y1, y2, result)
+            }
+          case _ => None
+        }
+      }
+
+      def apply(args : Any*) : Expr = parse(sc.parts.head).get
+      def unapplySeq(expr : Expr): Option[Seq[Expr]] = {
+        val n = sc.parts.length
+        val unknowns = for(i <- 0 until n - 1) yield "$x" + i
+        val toParse = parse(sc.s(unknowns : _*)) //TODO other way around ? decompose original expr right away ?
+        println(s"parsed ${toParse}")
+        toParse match{
+          case Some(x) => deconstructTree(unknowns.toList, x, expr, Nil)
+          case None => None
+        }
+      }
+    }
+
 
   }
 
