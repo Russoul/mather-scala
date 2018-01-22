@@ -18,10 +18,13 @@ object TestMather{
   }
 
   def testAll() : Unit = {
+    assert(e"pi" == EConst("pi"))
+    assert(e"x" == EVar("x"))
     assert(isValidEInt("10"))
     assert(isValidEInt("-1"))
     assert(isValidEVar("x"))
     assert(isValidEVar("x1x"))
+    assert(!isValidEVar("-x"))
     assert(parseBinFn("+", "1+1").isDefined)
     assert(stringStartsWithDigit("1"))
     assert(!stringStartsWithDigit("z1"))
@@ -41,6 +44,8 @@ object TestMather{
     assertEqualShow(parse("a - b - c") , Some(EBinFn(EBinFn(EVar("a"), EVar("b"), Minus), EVar("c"), Minus)) )
     assertEqualShow(parse("sqrt( 2 + 5 - 10 + abs( -1 ) )") , Some(EUnFn(EBinFn(EBinFn(EBinFn(EInt(2), EInt(5), Plus), EInt(10), Minus), EUnFn(EInt(-1), Module), Plus), Sqrt)))
 
+
+
     assert(e"1 + 2" match{
       case e"$x + 2" => x == EInt(1)
       case _ => false
@@ -57,10 +62,23 @@ object TestMather{
       case _ => false
     })
 
+
+    val simplifyFull = (e : Expr) => simplifyUsingEquivRules2(e, combos)
+    val simplifyOneStep = (e : Expr) => simplify(e, _ < 1)._1
+
     e"1 + 1"
-    e"2 * 1 + 5 * sqrt(5)" //<-- chose will throw None.get exception if their expressions can not be parsed
+    e"2 * 1 + 5 * sqrt(5)" //<-- those will throw None.get exception if their expressions can not be parsed
     e"-1 * x + y"
     e"1+2"
+    assert(simplifyOneStep(e"sin(pi/4)") == e"sqrt(2)/2")
+    println(simplifyFull(e"sin(pi/4) + sin(5*pi/4)").show) //TODO output is incorrect, debug
+
+    //TODO `-x` cannot be parsed use `-1 * x` for now
+    //TODO test sin simplifications
+    //TODO test all simplifications
+
+    //TODO simplification rules
+    //TODO equivalence rules
 
   }
 

@@ -40,6 +40,8 @@ object Main {
   //TODO add simplification rule : x * 1 == x
   //TODO make sure we do not have equivalent simplification rules, e.x: 0 * x == x * 0 == 0
   //TODO dynamic refinements are good to be used here for debug and for self explaned parameter constraints(port my scalac plugin for this to dotty ?)
+  //TODO matrices (as expressions)
+  //TODO domain of an Expr(== domain of a function it represents)
 
   //def matrixMultiply(a : Matrix, b : Matrix)(ref:R[a.m == b.n]) ==>
   //def matrixMultiply(a : Matrix, b : Matrix){

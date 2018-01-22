@@ -41,10 +41,17 @@ object Mather {
 
   case object Module extends UnFn
 
+  case object Sin extends UnFn
+
   val binFnSyms = immutable.HashMap(Plus -> "+", Minus -> "-", Mult -> "*", Div -> "/")
-  val unFnSyms = immutable.HashMap(Sqrt -> "sqrt", Square -> "square", Module -> "abs")
+  val unFnSyms = immutable.HashMap(Sqrt -> "sqrt", Square -> "square", Module -> "abs", Sin -> "sin")
 
   val binFnAssoc = immutable.HashMap(Plus -> AssocLeft, Mult -> AssocLeft, Minus -> AssocLeft, Div -> AssocLeft)
+
+  //list of all constants
+  //when something like `x + pi` is parsed if symbol `x` is contained inside the below list it is parsed as a constant (in case of `x` it is not)
+  //if it not then like a variable
+  val constants = immutable.List("pi")
 
 
   implicit val showBinFn: Show[BinFn] = {
@@ -128,12 +135,15 @@ object Mather {
 
   case class EInt(value: Int) extends Expr
 
+  case class EConst(name : String) extends Expr
+
   case class EBinFn(a: Expr, b: Expr, f: BinFn) extends Expr
 
   case class EUnFn(a: Expr, f: UnFn) extends Expr
 
   implicit def showExpr[T <: Expr]: Show[T] = {
     case EInt(x) => if (x >= 0) x.toString else "(" + x.toString + ")"
+    case EConst(x) => x
     case EVar(x) => x
     case EBinFn(x, y, f) => "(" + x.show + " " + f.show + " " + y.show + ")"
     case EUnFn(x, f) => f.show + "(" + x.show + ")"
@@ -246,13 +256,28 @@ object Mather {
       case EUnFn(EInt(x), Square) => EInt(x * x)
       case EUnFn(EInt(x), Module) => EInt(math.abs(x))
       case EUnFn(EUnFn(EInt(x), Square), Sqrt) => EUnFn(EInt(x), Module)
+
+      case e@e"sin($x)" =>
+        x match{
+          case e"0" | e"pi" => EInt(0)
+          case e"pi/2" => EInt(1)
+          case e"3 * pi / 2" => EInt(-1)
+          case e"pi/4" | e"3*pi/4" => e"sqrt(2)/2"
+          case e"pi/6" | e"5*pi/6" => e"1/2"
+          case e"pi/3" | e"2*pi/3" => e"sqrt(3)/2"
+          case e"7*pi/6" | e"11*pi/6" => e"-1 / 2"
+          case e"5*pi/4" | e"7*pi/4" => e"-1 * sqrt(2)/2"
+          case e"4*pi/3" | e"5*pi/3" => e"-1 * sqrt(3)/2"
+          case _ => e
+        }
+
       case _ => unFn
     }
   }
 
   def isSimplifiable(expr: Expr) : Bool = {
     expr match{
-      case EInt(_) | EVar(_) => false
+      case EInt(_) | EVar(_) | EConst(_) => false
       case f@EBinFn(x,y,_) =>
         if (isSimplifiable(x)) true else{
           if(isSimplifiable(y)) true else{
@@ -271,8 +296,7 @@ object Mather {
 
 
     expr match{
-      case EInt(_) => (expr, nat)
-      case EVar(_) => (expr, nat)
+      case EInt(_) | EVar(_) | EConst(_) => (expr, nat)
       case f@EBinFn(x,y,ft) =>
         if(isSimplifiable(x)){
           val inner = simplify(x, cond, nat)
@@ -549,8 +573,7 @@ object Mather {
 
   def applyRules(expr : Expr, ruleCombos : Stream[Expr => Option[Expr]]) : Stream[Expr] = {
     expr match{
-      case i@EInt(_) => i #:: ruleCombos.flatMap(rule => rule(i))
-      case v@EVar(_) => v #:: ruleCombos.flatMap(rule => rule(v))
+      case s@(EInt(_) | EConst(_) | EVar(_)) => s #:: ruleCombos.flatMap(rule => rule(s))
       case f@EUnFn(arg, op) =>
         val inner = applyRules(arg, ruleCombos)
         f #:: inner.flatMap(
@@ -574,8 +597,7 @@ object Mather {
   //trying to apply given rule to expression recursively(if it cannot apply the rule to given expr it applies it to its children); return after the first success
   def applyRuleRec(expr : Expr, ruleCombo : Expr => Option[Expr]) : Option[Expr] = {
     expr match{
-      case i@EInt(_) => ruleCombo(i)
-      case v@EVar(_) => ruleCombo(v)
+      case s@(EInt(_)|EVar(_)|EConst(_)) => ruleCombo(s)
       case f@EUnFn(arg, op) => ruleCombo(f) match{
         case ok@Some(_) => ok
         case None => for(ok <- applyRuleRec(arg, ruleCombo)) yield EUnFn(ok, op)
@@ -601,6 +623,7 @@ object Mather {
       //add presimplification for performance
       //println(s"pre simple")
       val (out,newSteps) = simplify(expr, always, steps)
+
 
       if(newSteps > steps){
         //println(s"first go")
@@ -715,7 +738,6 @@ object Mather {
   }
 
 
-
   def stringStartsWithDigit(str : String) : Bool = str.nonEmpty && str.head >= '0' && str.head <= '9'
 
   def stringHasWhitespace(str : String) : Bool = {
@@ -737,9 +759,17 @@ object Mather {
     }
   }
 
+  def stringOfLettersDigitsSpecial(str : String, special : List[Char]) : Bool = {
+    for(char <- str){
+      if(!char.isLetterOrDigit && !special.contains(char)) return false
+    }
+
+    true
+  }
+
   //accepts trimmed input
   def isValidEVar(str : String) : Bool = {
-    !stringStartsWithDigit(str) && str.nonEmpty && !stringHasWhitespace(str)
+    !stringStartsWithDigit(str) && str.nonEmpty && !stringHasWhitespace(str) && stringOfLettersDigitsSpecial(str, List('$'))//$ is used internally
   }
 
 
@@ -830,8 +860,12 @@ object Mather {
               //println("EInt:" + trimmed)
               Some(EInt(Integer.parseInt(trimmed)))
             }
-            else if(isValidEVar(trimmed)){
-              Some(EVar(trimmed))
+            else if(isValidEVar(trimmed)){//if EVar is valid then EConst is also valid (same rules)
+              if(constants.contains(trimmed)){
+                Some(EConst(trimmed))
+              }else{
+                Some(EVar(trimmed))
+              }
             }else
               None
         }
@@ -848,6 +882,7 @@ object Mather {
 
 
   implicit class ExprParser(val sc: StringContext){
+
 
     object e{
 
@@ -872,14 +907,22 @@ object Mather {
       }
 
       def apply(args : Any*) : Expr = parse(sc.parts.head).get
+
       def unapplySeq(expr : Expr): Option[Seq[Expr]] = {
         val n = sc.parts.length
-        val unknowns = for(i <- 0 until n - 1) yield "$x" + i
-        val toParse = parse(sc.s(unknowns : _*)) //TODO other way around ? decompose original expr right away ?
-        println(s"parsed ${toParse}")
-        toParse match{
-          case Some(x) => deconstructTree(unknowns.toList, x, expr, Nil)
-          case None => None
+        if(n > 1){
+          val unknowns = for(i <- 0 until n - 1) yield "$x" + i
+          val toParse = parse(sc.s(unknowns : _*)) //TODO other way around ? decompose original expr right away ?
+          toParse match{
+            case Some(x) => deconstructTree(unknowns.toList, x, expr, Nil)
+            case None => None
+          }
+        }else{
+          val parsed = parse(sc.s())
+          parsed match{
+            case None => None
+            case Some(p) => if(p == expr) Some(Nil) else None
+          }
         }
       }
     }
