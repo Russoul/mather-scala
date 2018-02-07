@@ -44,6 +44,7 @@ object TestMather{
     assertEqualShow(parse("a - b - c") , Some(EBinFn(EBinFn(EVar("a"), EVar("b"), Minus), EVar("c"), Minus)) )
     assertEqualShow(parse("sqrt( 2 + 5 - 10 + abs( -1 ) )") , Some(EUnFn(EBinFn(EBinFn(EBinFn(EInt(2), EInt(5), Plus), EInt(10), Minus), EUnFn(EInt(-1), Module), Plus), Sqrt)))
 
+    assertEqualShow(simplify(e"2 - 4/3", _ => true)._1 , e"2/3")
 
 
     assert(e"1 + 2" match{

@@ -61,6 +61,8 @@ object Main {
       case e"abs(sqrt($x) + $y)" => println(s"done $x $y")
       case _ =>
     }
+
+    ftest1()
   }
 
   def ftest1(): Unit ={
@@ -76,15 +78,15 @@ object Main {
     }
 
     val mat = Matrix(3, 3, Array(
-      e"1", e"2", e"1",
+      e"0", e"2", e"1",
       e"6", e"8", e"7",
-      e"1", e"2", e"9 + p"
+      e"1", e"2", e"9"
     ))
 
     val vec = Vector(Array(
       e"1",  e"2" , e"3" ))
 
-    println(solveLinearSystemSingular(mat, vec).simplifyAll().show)
+    println(matrixToHigherTriangularFormNoZeroChecks(mat, x => x == EInt(0)).simplifyAll().show)
   }
 
 

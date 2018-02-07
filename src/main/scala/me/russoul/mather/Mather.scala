@@ -230,10 +230,17 @@ object Mather {
       case EBinFn(EBinFn(EInt(a), EInt(b), Div), EBinFn(EInt(c), EInt(d), Div), Mult) =>
         //(a/b) * (c/d)
         EBinFn(EInt(a * c), EInt(b * d), Div)
-      case e"$a + $c / $di" => //a + c/d //where d is a number != 0
+      case full@e"$a + $c / $di" => //a + c/d //where d is a number != 0
         di match{
           case EInt(d) if d != 0 =>
             e"($a * $di + $c) / $di"
+          case _ => binFn
+        }
+
+      case full@e"$a - $c / $di" => //a + c/d //where d is a number != 0
+        di match{
+          case EInt(d) if d != 0 =>
+            e"($a * $di - $c) / $di"
           case _ => binFn
         }
 
@@ -925,6 +932,27 @@ object Mather {
         }
       }
 
+      //TODO needs more testing
+      private def deconstructTreeFullMatch(names : List[String], m: Expr, original : Expr, result : List[Expr]) : Option[List[Expr]] = {
+        (m, original) match{
+          case (EVar(x), expr) if names.contains(x) => Some(expr :: result) //found
+          case (EInt(x), _) => None
+          case (EUnFn(x1, ty1), EUnFn(x2,ty2)) if(ty1 == ty2) => deconstructTreeFullMatch(names, x1, x2, result)
+          case (EBinFn(x1,y1,ty1), EBinFn(x2,y2,ty2)) if (ty1 == ty2) =>
+            val t1 = deconstructTreeFullMatch(names, x1, x2, result)
+            t1 match{
+              case Some(t) =>
+                val t2 = deconstructTreeFullMatch(names, y1, y2, result)
+                t2 match {
+                  case Some(k) => Some(t ++ k)
+                  case None => Some(t)
+                }
+              case None => deconstructTreeFullMatch(names, y1, y2, result)
+            }
+          case _ => None
+        }
+      }
+
       def apply(args : Any*) : Expr = {
         val mapped = args.map {
           case expr: Expr => expr.show
@@ -940,7 +968,7 @@ object Mather {
           val unknowns = for(i <- 0 until n - 1) yield "$x" + i
           val toParse = parse(sc.s(unknowns : _*)) //TODO other way around ? decompose original expr right away ?
           toParse match{
-            case Some(x) => deconstructTree(unknowns.toList, x, expr, Nil)
+            case Some(x) => deconstructTreeFullMatch(unknowns.toList, x, expr, Nil)
             case None => None
           }
         }else{
@@ -984,6 +1012,24 @@ object Mather {
 
     def update(i : Int, j : Int, expr: Expr): Unit = {
       array(i * m + j) = expr
+    }
+
+    def row(i : Int) : Vector = {
+      val ar = new Array[Expr](m)
+      for(j <- 0 until m){
+        ar(j) = this(i, j)
+      }
+
+      Vector(ar)
+    }
+
+    def withRow(i : Int, row : Vector) : Matrix = {
+      val copy = this.copy()
+      for(j <- 0 until m){
+        copy(i, j) = row(j)
+      }
+
+      copy
     }
 
     def simplifyAll() : Matrix = {
@@ -1051,38 +1097,68 @@ object Mather {
       str
   }
 
+  def swapRows(mat : Matrix, i : Int, j : Int) : Matrix = {
+    val rowI = mat.row(i)
+    val rowJ = mat.row(j)
+    val n = mat.withRow(i, rowJ)
+    n.withRow(j, rowI)
+  }
 
-  def matrixToHigherTriangularFormNoZeroChecks(mat : Matrix, i : Int = 0): Matrix ={
 
-    if(i + 1 == mat.m) return mat
+  def swapIfNeeded(mat : Matrix, i : Int, isZero : Expr => Bool) : Option[Matrix] = {
 
-    val onDiagonal = mat(i, i)
-    val one = EInt(1)
-
-    val newMat = mat.copy()
-
-    newMat(i, i) = one
-
-    for(j <- i + 1 until mat.m){
-      newMat(i, j) = EBinFn(mat(i, j), onDiagonal, Div)
-    }
+    if(!isZero(mat(i,i))) return Some(mat)
 
     for(k <- i + 1 until mat.n){
-      val el = newMat(k, i)//will become 0
-      newMat(k,i) = EInt(0)
-      for(j <- i + 1 until mat.m){
-        newMat(k, j) = EBinFn(newMat(k,j), EBinFn(EBinFn(EInt(-1), newMat(i, j), Mult), el, Mult), Plus) //mat(k, j) - mat(i, j) * el
+      if(!isZero(mat(k,i))){
+        return Some(swapRows(mat, i, k))
       }
     }
 
-    println(s"step $i ${newMat.simplifyAll().show}")
-
-    matrixToHigherTriangularFormNoZeroChecks(newMat.simplifyAll(), i + 1)
+    None
   }
 
-  def solveLinearSystemSingular(mat : Matrix, vec : Vector) : Vector = {
+  def matrixToHigherTriangularFormNoZeroChecks(mat : Matrix, isZero : Expr => Bool, i : Int = 0): Matrix ={
+
+    if(i + 1 == mat.m) return mat
+
+    val swap = swapIfNeeded(mat, i, isZero) //finds first row with non zero expr
+    swap match{
+      case Some(mat) =>
+        println(s"swapped: \n" + mat.show)
+        val onDiagonal = mat(i, i)
+        val one = EInt(1)
+
+        val newMat = mat.copy()
+
+        newMat(i, i) = one
+
+        for(j <- i + 1 until mat.m){
+          newMat(i, j) = EBinFn(mat(i, j), onDiagonal, Div)
+        }
+
+        for(k <- i + 1 until mat.n){
+          val el = newMat(k, i)//will become 0
+          println("el: " + el.show)
+          newMat(k,i) = EInt(0)
+          for(j <- i + 1 until mat.m){
+            newMat(k, j) = EBinFn(newMat(k,j), EBinFn(EBinFn(EInt(-1), newMat(i, j), Mult), el, Mult), Plus) //mat(k, j) - mat(i, j) * el
+            if(k == 2) println(s"(3,${j+1}) = ${newMat(k,j).show}")
+          }
+        }
+
+        println(s"step $i ${newMat.simplifyAll().show}")
+
+        matrixToHigherTriangularFormNoZeroChecks(newMat.simplifyAll(), isZero, i + 1)
+      case None => matrixToHigherTriangularFormNoZeroChecks(mat.simplifyAll(), isZero, i + 1)
+    }
+
+
+  }
+
+  def solveLinearSystemSingular(mat : Matrix, vec : Vector, isZero : Expr => Bool) : Vector = {
     println(s"input mat ${mat.appendColumn(vec).get.simplifyAll().show}")
-    val tr = matrixToHigherTriangularFormNoZeroChecks(mat.appendColumn(vec).get)
+    val tr = matrixToHigherTriangularFormNoZeroChecks(mat.appendColumn(vec).get, isZero)
     println(s"found matrix: ${tr.simplifyAll().show}")
     val ar = new Array[Expr](vec.array.length)
 
