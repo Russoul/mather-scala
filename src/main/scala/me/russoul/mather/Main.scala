@@ -51,7 +51,7 @@ object Main {
 
 
   def main(args : Array[String]) : Unit = {
-    val simplify = (e : Expr) => simplifyUsingEquivRules2(e, combos)
+   /* val simplify = (e : Expr) => simplifyUsingEquivRules2(e, combos)
 
     val parsed1 = parse("sqrt (x * 1)")
     println("-----------------------------------------------------")
@@ -60,7 +60,7 @@ object Main {
     e"abs(sqrt(x + 1) + y)" match{
       case e"abs(sqrt($x) + $y)" => println(s"done $x $y")
       case _ =>
-    }
+    }*/
 
     ftest1()
   }
@@ -68,10 +68,11 @@ object Main {
   def ftest1(): Unit ={
     println("----------------------------------==")
     //((3 + x) + ((x * 2) / x)) ; 2 + x + (x * 2) / x + 2 / 2 + 0
-    val parsed = parse("x + y + z + 2 * x - 0 * 5 + 4 * y + 2 * z")
+    val parsed = parse("1 / 2 / 3") //((47 / (-2)) + 1) / 3
     println(s"parsed: ${show(parsed)}")
-    parsed.foreach{ x =>
 
+    parsed.foreach{ x =>
+      println("simplifiable: " + isSimplifiable(parsed.get))
       val simplified = simplifyUsingEquivRules2(x, combos)
       println("========>")
       println(show(simplified))
@@ -79,14 +80,21 @@ object Main {
 
     val mat = Matrix(3, 3, Array(
       e"0", e"2", e"1",
-      e"6", e"8", e"7",
-      e"1", e"2", e"9"
+      e"0", e"8", e"4",
+      e"0", e"4", e"2"
     ))
 
     val vec = Vector(Array(
       e"1",  e"2" , e"3" ))
 
-    println(matrixToHigherTriangularFormNoZeroChecks(mat, x => x == EInt(0)).simplifyAll().show)
+
+    val simplify = (x:Expr) => simplifyUsingEquivRules2(x, combos)._1
+    val isZero = (x:Expr) => x == EInt(0)
+
+    //println(solveLinearSystemSingular(mat, vec, x => x == EInt(0)).simplifyAll().show)
+    println("rank: " + matrixRank(mat, isZero, simplify))
+
+    println("are col: " + areCollinear(Vector(Array(EInt(2), EInt(1))), Vector(Array(EInt(1), EBinFn(EInt(1), EInt(2), Div))), isZero, simplify))
   }
 
 

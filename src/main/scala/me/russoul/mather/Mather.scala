@@ -2,6 +2,8 @@ package me.russoul.mather
 
 import cats._
 import cats.implicits._
+
+import scala.util.control.Breaks
 //import cats.syntax._
 
 import scala.collection.{immutable, mutable}
@@ -97,7 +99,7 @@ object Mather {
     binFnAssoc(fn.asInstanceOf[BinFn with Product with Serializable])
   }
 
-  def isWholeDivision(a: Int, b: Int): Bool = a % b == 0
+  def isWholeDivision(a: Int, b: Int): Bool = if(b == 0)true else a % b == 0
 
   def isPerfectSquare(a: Int): Bool = {
     if(a < 0) return false
@@ -160,13 +162,14 @@ object Mather {
 
 
   def simplifyBinFn(binFn: EBinFn): Expr = {
-    binFn match {
+    val ret = binFn match {
       case EBinFn(EInt(x), EInt(y), typee) =>             //<--------  Int # Int
         typee match {
           case Plus => EInt(x + y)
           case Minus => EInt(x - y)
           case Mult => EInt(x * y)
           case Div => if (isWholeDivision(x, y) && (y != 0)) EInt(x / y) else {
+            if(y == 0) return binFn
 
             def simpl(x : Int, y : Int) : (Int, Int) = {
               val gcd = GCD(x,y)
@@ -181,6 +184,14 @@ object Mather {
 
           }
         }
+      case EBinFn(EInt(x), EBinFn(EInt(y), EInt(z),op), Mult) if op == Plus || op == Minus => //distributive property
+        EBinFn(EInt(x * y), EInt(x * z), op)
+      case EBinFn(EInt(x), EBinFn(EInt(y), EInt(z),Div), Mult) =>
+        EBinFn(EInt(x * y), EInt(z), Div)
+      case EBinFn(EInt(x), EBinFn(EInt(y), EInt(z), Div), op) if op == Plus || op == Minus => EBinFn(EBinFn(EInt(x * z), EInt(y), op), EInt(z), Div)
+      case EBinFn(EBinFn(EInt(a), EInt(b), Div), EInt(c), Div) if b != 0 && c != 0 => EBinFn(EInt(a), EInt(b * c), Div)
+
+
       case EBinFn(EVar(x), EVar(y), typee) =>          //<---------- x # y
         if (x == y) {
           typee match {
@@ -230,19 +241,27 @@ object Mather {
       case EBinFn(EBinFn(EInt(a), EInt(b), Div), EBinFn(EInt(c), EInt(d), Div), Mult) =>
         //(a/b) * (c/d)
         EBinFn(EInt(a * c), EInt(b * d), Div)
-      case full@e"$a + $c / $di" => //a + c/d //where d is a number != 0
+      /*case e"$a + $c / $di" =>
         di match{
           case EInt(d) if d != 0 =>
             e"($a * $di + $c) / $di"
           case _ => binFn
-        }
+        }*/
 
-      case full@e"$a - $c / $di" => //a + c/d //where d is a number != 0
-        di match{
-          case EInt(d) if d != 0 =>
-            e"($a * $di - $c) / $di"
-          case _ => binFn
-        }
+      /*case e"$a - $c / $di" => //a + c/d //where d is a number != 0
+      di match{
+        case EInt(d) if d != 0 =>
+          e"($a * $di - $c) / $di"
+        case _ => binFn
+      }*/
+
+
+      //a + b/c //where c is a number != 0
+      case EBinFn(a, EBinFn(b,EInt(c),Div),Plus) if c != 0 => EBinFn( EBinFn( EBinFn(a, EInt(c), Mult), b, Plus ), EInt(c), Div )
+      //a - b/c //where c is a number != 0
+      case EBinFn(a, EBinFn(b,EInt(c),Div),Minus) if c != 0 => EBinFn( EBinFn( EBinFn(a, EInt(c), Mult), b, Minus ), EInt(c), Div )
+
+
 
       case EBinFn(a, EBinFn(EInt(b), EInt(c), Div), Div) if c != 0 && b != 0 => //   a / b / c where b and c numbers != 0
         EBinFn(EBinFn(a, EInt(c), Mult), EInt(b), Div)
@@ -271,6 +290,7 @@ object Mather {
         }
       case _ => binFn
     }
+    ret
   }
 
   def simplifyUnFn(unFn: EUnFn): Expr = {
@@ -284,7 +304,22 @@ object Mather {
       case EUnFn(EInt(x), Module) => EInt(math.abs(x))
       case EUnFn(EUnFn(EInt(x), Square), Sqrt) => EUnFn(EInt(x), Module)
 
-      case e@e"sin($x)" =>
+
+      case EUnFn(x, Sin) =>
+        x match{
+          case EInt(0) | EConst("pi") => EInt(0)
+          case EBinFn(EConst("pi"),EInt(2),Div) => EInt(1)
+          case EBinFn(EBinFn(EInt(3), EConst("pi"), Mult), EInt(2), Div ) => EInt(-1)
+          case EBinFn(EConst("pi"), EInt(4), Div) | EBinFn(EBinFn(EInt(3), EConst("pi"), Mult), EInt(4), Div ) => EBinFn(EUnFn(EInt(2), Sqrt),EInt(2),Div)
+          case EBinFn(EConst("pi"), EInt(6), Div) | EBinFn(EBinFn(EInt(5), EConst("pi"), Mult), EInt(6), Div ) => EBinFn(EInt(1), EInt(2), Div)
+          case EBinFn(EConst("pi"), EInt(3), Div) | EBinFn(EBinFn(EInt(2), EConst("pi"), Mult), EInt(3), Div ) => EBinFn(EUnFn(EInt(3), Sqrt),EInt(2),Div)
+          case EBinFn(EBinFn(EInt(7), EConst("pi"), Mult), EInt(6), Div ) | EBinFn(EBinFn(EInt(11), EConst("pi"), Mult), EInt(6), Div ) => EBinFn(EInt(-1), EInt(2), Div)
+          case EBinFn(EBinFn(EInt(5), EConst("pi"), Mult), EInt(4), Div ) | EBinFn(EBinFn(EInt(7), EConst("pi"), Mult), EInt(4), Div ) => EBinFn(EUnFn(EInt(2), Sqrt),EInt(-2),Div)
+          case EBinFn(EBinFn(EInt(4), EConst("pi"), Mult), EInt(3), Div ) | EBinFn(EBinFn(EInt(5), EConst("pi"), Mult), EInt(3), Div ) => EBinFn(EUnFn(EInt(3), Sqrt),EInt(-2),Div)
+          case _ => unFn
+        }
+
+      /*case e@e"sin($x)" =>
         x match{
           case e"0" | e"pi" => EInt(0)
           case e"pi/2" => EInt(1)
@@ -296,14 +331,14 @@ object Mather {
           case e"5*pi/4" | e"7*pi/4" => e"-1 * sqrt(2)/2"
           case e"4*pi/3" | e"5*pi/3" => e"-1 * sqrt(3)/2"
           case _ => e
-        }
+        }*/
 
       case _ => unFn
     }
   }
 
   def isSimplifiable(expr: Expr) : Bool = {
-    expr match{
+    val ret = expr match{
       case EInt(_) | EVar(_) | EConst(_) => false
       case f@EBinFn(x,y,_) =>
         if (isSimplifiable(x)) true else{
@@ -316,6 +351,8 @@ object Mather {
           simplifyUnFn(f) != f
         }
     }
+
+    ret
   }
 
   def simplify(expr : Expr, cond : Int => Bool, nat : Int = 0) : (Expr, Int) = {
@@ -603,20 +640,23 @@ object Mather {
       case s@(EInt(_) | EConst(_) | EVar(_)) => s #:: ruleCombos.flatMap(rule => rule(s))
       case f@EUnFn(arg, op) =>
         val inner = applyRules(arg, ruleCombos)
-        f #:: inner.flatMap(
+        inner.map(x => EUnFn(x, op)) ++ inner.flatMap(
           a => ruleCombos.flatMap(
             rule => rule(EUnFn(a, op))))
 
       case f@EBinFn(a, b, op) =>
         val inner1 = applyRules(a, ruleCombos)
         val inner2 = applyRules(b, ruleCombos)
-        f #:: inner1.flatMap(
+
+
+        (for(x <- inner1; y <-inner2) yield EBinFn(x,y,op)) ++ inner1.flatMap(
           a => inner2.flatMap(
             b => ruleCombos.flatMap(
               rule => rule(EBinFn(a,b,op))
             )
           )
         )
+
 
     }
   }
@@ -1002,6 +1042,8 @@ object Mather {
 
       Vector(ret)
     }
+
+    def isZero(criterion : Expr => Bool) : Bool = array.forall(criterion)
   }
 
   //each op returns a new matrix
@@ -1030,6 +1072,12 @@ object Mather {
       }
 
       copy
+    }
+
+    def setRow(i : Int, row : Vector) : Unit  = {
+      for(j <- 0 until m){
+        this(i, j) = row(j)
+      }
     }
 
     def simplifyAll() : Matrix = {
@@ -1118,9 +1166,87 @@ object Mather {
     None
   }
 
-  def matrixToHigherTriangularFormNoZeroChecks(mat : Matrix, isZero : Expr => Bool, i : Int = 0): Matrix ={
 
-    if(i + 1 == mat.m) return mat
+  //TODO does not work
+  def areCollinear(a : Vector, b : Vector, isZero : Expr => Bool, simplify : Expr => Expr) : Bool = {
+    if(a.array.length != b.array.length || a.array.length == 0) return false
+
+
+    var j = -1
+
+    var k : Expr = EInt(0)
+
+    Breaks.breakable{ //find first non zero
+      for(i <- 0 until a.array.length){
+        val bi = a(i)
+        if(!isZero(bi)){
+          k = simplify(EBinFn(a(i),bi,Div))
+          j = i
+          Breaks.break()
+        }
+      }
+    }
+
+    if(j == -1){ //b is zero
+      return a.isZero(isZero)
+    }
+
+    for(i <- j + 1 until a.array.length){
+      val k2 = simplify(EBinFn(a(i),b(i),Div))
+
+      if(k != k2) return false
+    }
+
+    true
+
+  }
+
+  def checkCollinearRows(mat_ : Matrix, isZero : Expr => Bool, simplify : Expr => Expr) : Matrix = {
+
+    val mat = mat_.copy()
+
+    for(i <- 0 until mat.n - 1){
+      for(j <- i + 1 until mat.n){
+        println("are col: " + mat.row(i).show + " and " + mat.row(j).show)
+        if(areCollinear(mat.row(i), mat.row(j), isZero, simplify)){
+          mat.setRow(j, Vector(Array.tabulate(mat.n)(_ => EInt(0)))) //set to zero vector
+        }
+      }
+    }
+
+    mat
+  }
+
+  def allZerosToBottom(mat_ : Matrix, isZero : Expr => Bool) : Matrix  = {
+
+    var mat = mat_.copy()
+
+    for(i <- 0 until mat.n - 1){
+      val v = mat.row(i)
+
+      if(v.isZero(isZero)){
+        Breaks.breakable{
+          for(j <- i + 1 until mat.n){
+            val non = mat.row(j)
+            if(non.isZero(isZero)){
+              mat = swapRows(mat, i, j)
+              Breaks.break()
+            }
+          }
+        }
+      }
+    }
+
+    mat
+  }
+
+  def matrixToRowEchelonForm(mat : Matrix, isZero : Expr => Bool, simplify : Expr => Expr, i : Int = 0): Matrix ={
+
+    if(i + 1 == mat.m){
+      val mat1 = checkCollinearRows(mat, isZero, simplify)
+      val mat2 = allZerosToBottom(mat1, isZero)
+      return mat2
+    }
 
     val swap = swapIfNeeded(mat, i, isZero) //finds first row with non zero expr
     swap match{
@@ -1149,16 +1275,50 @@ object Mather {
 
         println(s"step $i ${newMat.simplifyAll().show}")
 
-        matrixToHigherTriangularFormNoZeroChecks(newMat.simplifyAll(), isZero, i + 1)
-      case None => matrixToHigherTriangularFormNoZeroChecks(mat.simplifyAll(), isZero, i + 1)
+        matrixToRowEchelonForm(newMat.simplifyAll(), isZero, simplify, i + 1)
+      case None => matrixToRowEchelonForm(mat.simplifyAll(), isZero, simplify, i + 1)
     }
 
 
   }
 
-  def solveLinearSystemSingular(mat : Matrix, vec : Vector, isZero : Expr => Bool) : Vector = {
+
+  def countLeadingZeros(vec : Vector, isZero : Expr => Bool) : Int = {
+    var count = 0
+    for(a <- vec.array if isZero(a)) count += 1
+    count
+  }
+
+  def isInRowEchelonForm(mat : Matrix, isZero : Expr => Bool) : Bool = {
+
+    var prev = -1
+
+    for(row <- 0 until mat.n){
+      val count = countLeadingZeros(mat.row(row), isZero)
+      if(count > prev){
+        prev = count
+      }else{
+        return false
+      }
+    }
+
+    true
+  }
+
+  def matrixRank(mat : Matrix, isZero : Expr => Bool, simplify : Expr => Expr) : Int = {
+    val rowEchelon = if(isInRowEchelonForm(mat, isZero)) mat else matrixToRowEchelonForm(mat, isZero, simplify)
+
+    var rank = rowEchelon.n
+    for(i <- rowEchelon.n - 1 to 0 by -1){
+      if(rowEchelon.row(i).isZero(isZero)) rank -= 1
+    }
+
+    rank
+  }
+
+  def solveLinearSystemSingular(mat : Matrix, vec : Vector, isZero : Expr => Bool, simplify : Expr => Expr) : Vector = {
     println(s"input mat ${mat.appendColumn(vec).get.simplifyAll().show}")
-    val tr = matrixToHigherTriangularFormNoZeroChecks(mat.appendColumn(vec).get, isZero)
+    val tr = matrixToRowEchelonForm(mat.appendColumn(vec).get, isZero, simplify)
     println(s"found matrix: ${tr.simplifyAll().show}")
     val ar = new Array[Expr](vec.array.length)
 
