@@ -57,7 +57,7 @@ object Mather {
   //list of all constants
   //when something like `x + pi` is parsed if symbol `x` is contained inside the below list it is parsed as a constant (in case of `x` it is not)
   //if it not then like a variable
-  val constants = immutable.List("pi", "e")
+  val constants = immutable.List("pi", "e", "i")
 
 
   implicit val showBinFn: Show[BinFn] = {
@@ -807,7 +807,6 @@ object Mather {
 
     val pattern = (s"dif_([^1-9][1-9a-zA-Z]*)\\s*\\((.*)\\)").r
     val result = pattern.findFirstMatchIn(str).map(x => (x.group(1), x.group(2)) )
-    println("result " + result)
     val fil = result.filter{ case (variable, insides) => isValidEVar(variable) && areParenthesesValid(insides) }
     if(fil.isDefined) return Some( (Dif(EVar(fil.get._1)), fil.get._2) )
 
@@ -979,6 +978,16 @@ object Mather {
 
     make(str_)
 
+  }
+
+
+  def substitute(fullExpr: Expr, sym : EVar, sub : Expr) : Expr = {
+    fullExpr match{
+      case EVar(x) if x == sym.name => sub
+      case e@(EInt(_) | EConst(_) | EVar(_)) => e
+      case EUnFn(e, op) => EUnFn(substitute(e, sym, sub), op)
+      case EBinFn(e1, e2, op) => EBinFn(substitute(e1, sym, sub), substitute(e2, sym, sub), op)
+    }
   }
 
   val rules = Stream(Stream(useAssocL _, useAssocR _), Stream(useCommut _))

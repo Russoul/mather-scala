@@ -71,12 +71,21 @@ object Main {
     val simplify = (x:Expr) => simplifyUsingEquivRules2(x, combos)._1
     val isZero = (x:Expr) => x == EInt(0)
 
-    val tr = parse("dif_t(nu + 2 * t + 5 * sqrt(t))")
+    val tr = parse("dif_t(u + 2 * t + 5 * sqrt(t))")
     println("parsed: " + tr.isDefined)
     tr.foreach{x =>
       println("parsed: " + x.show)
-      println("simplified: " + simplify(x).show)
+      val e1 = simplify(x)
+      println("e1 = " + e1.show)
+      val e2 = simplify(substitute(e1, EVar("u"), e"gzi + nu"))
+      println("e2 = " + e2.show)
     }
+
+    import Helper._
+
+
+    val tr2 = solveQuadraticEq(e"a", e"2", e"1").map(simplify)
+    println(tr2.show)
   }
 
   def ftest1(): Unit ={
