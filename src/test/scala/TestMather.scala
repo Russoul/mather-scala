@@ -4,6 +4,7 @@ import me.russoul.mather.Mather._
 
 import scala.annotation.elidable
 import scala.annotation.elidable.ASSERTION
+import me.russoul.mather.Parser._
 
 object TestMather{
 
