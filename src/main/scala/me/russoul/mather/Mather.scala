@@ -4,6 +4,7 @@ import cats._
 import cats.implicits._
 import Parser._
 
+import scala.collection.immutable.HashMap
 import scala.util.control.Breaks
 //import cats.syntax._
 
@@ -51,7 +52,16 @@ object Mather {
 
   case class Dif(variable : EVar) extends UnFn
 
-  val binFnSyms = immutable.HashMap(Plus -> "+", Minus -> "-", Mult -> "*", Div -> "/")
+  val binOpSyms = immutable.HashMap(Plus -> "+", Minus -> "-", Mult -> "*", Div -> "/")
+  def keyForValue[Key, Value](hashMap: HashMap[Key, Value], value : Value) : Option[Key] = {
+    for( (k,v) <- hashMap ){
+      if(v == value) return Some(k).asInstanceOf[Option[Key]]
+    }
+
+    None
+  }
+
+  //those are used as `default` function notation, e.g: sqrt(1) or square(2)
   val unFnSyms = immutable.HashMap(Sqrt -> "sqrt", Square -> "square", Module -> "abs", Sin -> "sin", Cos -> "cos")
 
   val binFnAssoc = immutable.HashMap(Plus -> AssocLeft, Mult -> AssocLeft, Minus -> AssocLeft, Div -> AssocLeft)
@@ -63,7 +73,7 @@ object Mather {
 
 
   implicit val showBinFn: Show[BinFn] = {
-    x => binFnSyms(x.asInstanceOf[BinFn with Product with Serializable])
+    x => binOpSyms(x.asInstanceOf[BinFn with Product with Serializable])
   }
 
   implicit val showUnFn: Show[UnFn] = {

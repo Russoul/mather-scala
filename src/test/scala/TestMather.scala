@@ -18,6 +18,20 @@ object TestMather{
     }
   }
 
+  def testParsec() : Unit = {
+    import me.russoul.mather.NewParser._
+    import scala.util.parsing.combinator.Parsers
+
+    val result1 = parseAll(parseExpr, "-1 + 2")
+    assert(result1.successful && result1.get == EBinFn(EInt(-1),EInt(2),Plus))
+
+
+    val result2 = parseAll(parseExpr, "sqrt(1)") //TODO fix the parser
+    println(result2)
+    if(result2.successful) println(result2.get.show)
+
+  }
+
   def testAll() : Unit = {
     assert(e"pi" == EConst("pi"))
     assert(e"x" == EVar("x"))
@@ -86,5 +100,6 @@ object TestMather{
 
   def main(args : Array[String]) : Unit = {
     testAll()
+    testParsec()
   }
 }

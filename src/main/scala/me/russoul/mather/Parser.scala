@@ -3,6 +3,143 @@ package me.russoul.mather
 import Mather._
 
 import scala.collection.mutable
+import scala.util.parsing.combinator.RegexParsers
+import scala.util.parsing.input.Positional
+
+object NewParser extends RegexParsers{
+  override val skipWhitespace = true
+
+  val space = "[ ]"
+  val letter = "[a-zA-Z]"
+  val digit = "[0-9]"
+  val sym = "[\\+\\-\\*/]"
+
+  def parseInt: Parser[EInt] = {
+    opt("-") ~ rep1(digit.r) ^^ { case (minus ~ str) => EInt(Integer.parseInt( (if(minus.isDefined) "-" else "") + str.reduce(_ + _))) }
+  }
+
+  def parseConst: Parser[EConst] = {
+    (regex(letter.r) ~ rep(letter.r | digit.r)) ^? {
+      case (x ~ xs) if constants.contains((x :: xs).reduce(_ + _)) => EConst((x :: xs).reduce(_ + _))
+    }
+  }
+
+  def parseVar: Parser[EVar] = {
+    (regex(letter.r) ~ rep(letter.r | digit.r)) ^? {
+      case (x ~ xs) if !constants.contains((x :: xs).reduce(_ + _)) => EVar((x :: xs).reduce(_ + _))
+    }
+  }
+
+  def parseUnFnSimple : Parser[UnFn] = {
+    rep1(letter.r) ^? {
+      case xs if unFnSyms.values.exists(x => x == xs.reduce(_ + _)) =>
+        keyForValue(unFnSyms, xs.reduce(_ + _)).get
+    }
+  }
+
+
+
+  def parseUnFnDefaultNotation : Parser[EUnFn] = {
+
+    (parseUnFnSimple <~ literal("(")) ~ (parseExpr <~ literal(")")) ^^ {
+      case typee ~ content => EUnFn(content, typee)
+    }
+  }
+
+
+  case class PosString(str : String) extends Positional
+
+  def parsePosSym : Parser[PosString] = {
+    regex(sym.r) ^^ {x => PosString(x)}
+  }
+
+  //op must be available in `binOpSyms`
+  def parseLeftAssocOpsOnSameLevel : Parser[EBinFn] = {
+    parseOpExpr ~ rep1(positioned(parsePosSym) ~ parseOpExpr) ^^ {
+      case x ~ ( (op ~ expr) :: xs) =>
+       def rec(left : Expr, op : PosString, right : Expr,  xs : List[~[PosString,Expr]]) : EBinFn = {
+         //third num is the index of operator with least precedence
+         val leastPrecedence = xs.foldLeft((op, keyForValue(binOpSyms, op.str).get, 0, 0)){ case (ac, op ~ _) =>
+           val opK = keyForValue(binOpSyms, op.str).get
+           if(precedence(ac._2) >= precedence(opK)) (op,opK,ac._4 + 1, ac._4 + 1) else (ac._1,ac._2,ac._3,ac._4+1)}.asInstanceOf[(Positional, BinFn,Int,Int)]
+
+
+
+
+         if(xs.isEmpty){
+           EBinFn(left, right, leastPrecedence._2)
+         }else{
+           if(leastPrecedence._3 == 0){
+             EBinFn(left, rec(right, xs.head._1, xs.head._2, xs.tail), leastPrecedence._2)
+           }else if (leastPrecedence._1 == xs.last._1.asInstanceOf[Positional]){
+             EBinFn(rec(left, op, right, xs.init), xs.last._2, leastPrecedence._2)
+           }else{
+             val split = xs.splitAt(leastPrecedence._3)
+             val leftPart = rec(left, op, right, split._1.init)
+             /*println("left part:" + split._1)
+             println("right part: " + split._2)
+             println("spliter: " + leastPrecedence._2)
+             println("left:" + left)
+             println("right: " + right)
+             println("op: " + op)
+             println("full list: " + xs)*/
+             val rightPart = rec(split._1.last._2, split._2.head._1, split._2.head._2, split._2.tail)
+
+             EBinFn(leftPart, rightPart, leastPrecedence._2)
+           }
+         }
+
+       }
+
+
+       rec(x, op, expr, xs)
+
+
+    }
+  }
+
+  def parseOpExprP : Parser[Expr] = {
+    literal("(") ~ (
+      parseInt                 |
+      parseConst               |
+      parseVar                 |
+      parseUnFnDefaultNotation) ~ literal(")") ^^ {
+      case _ ~ expr ~ _ => expr
+    }
+  }
+
+  def parseOpExprNoP : Parser[Expr] = {
+      parseInt |
+      parseConst |
+      parseVar |
+      parseUnFnDefaultNotation
+  }
+
+  def parseOpExpr : Parser[Expr] = parseOpExprNoP | parseOpExprP
+
+  def parseExprP : Parser[Expr] = {
+    literal("(") ~ ( parseLeftAssocOpsOnSameLevel |
+                              parseInt                 |
+                              parseConst               |
+                              parseVar                 |
+                          parseUnFnDefaultNotation) ~ literal(")") ^^ {
+      case _ ~ expr ~ _ => expr
+    }
+  }
+
+  def parseExprNoP : Parser[Expr] = {
+    parseLeftAssocOpsOnSameLevel |
+      parseInt |
+      parseConst |
+      parseVar |
+      parseUnFnDefaultNotation
+  }
+
+  def parseExpr : Parser[Expr] = parseExprNoP | parseExprP
+
+
+
+}
 
 object Parser {
 
@@ -44,7 +181,7 @@ object Parser {
   //substring must be equal to sum defined bin fn symbol
   //full string must contain no empty lhs and rhs relative to substring
   def parseBinFn(substring : String, fullstring : String) : Option[BinFn] = {
-    for(sym <- binFnSyms){
+    for(sym <- binOpSyms){
       if(sym._2 == substring){
         if(fullstring.matches(s"[\\s\\S]*\\S+[\\s\\S]*\\$substring[\\s\\S]*\\S+[\\s\\S]*")) return Some(sym._1)
       }
