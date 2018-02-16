@@ -62,7 +62,21 @@ object Main {
       case _ =>
     }*/
 
-    ftest1()
+    ftest2()
+  }
+
+  def ftest2(): Unit ={ //TODO don't show redundant parenthesis when pretty printing expression
+
+
+    val simplify = (x:Expr) => simplifyUsingEquivRules2(x, combos)._1
+    val isZero = (x:Expr) => x == EInt(0)
+
+    val tr = parse("dif_t(nu + 2 * t + 5 * sqrt(t))")
+    println("parsed: " + tr.isDefined)
+    tr.foreach{x =>
+      println("parsed: " + x.show)
+      println("simplified: " + simplify(x).show)
+    }
   }
 
   def ftest1(): Unit ={

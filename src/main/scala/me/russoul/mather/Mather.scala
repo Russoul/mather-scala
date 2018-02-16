@@ -45,15 +45,19 @@ object Mather {
 
   case object Sin extends UnFn
 
+  case object Cos extends UnFn
+
+  case class Dif(variable : EVar) extends UnFn
+
   val binFnSyms = immutable.HashMap(Plus -> "+", Minus -> "-", Mult -> "*", Div -> "/")
-  val unFnSyms = immutable.HashMap(Sqrt -> "sqrt", Square -> "square", Module -> "abs", Sin -> "sin")
+  val unFnSyms = immutable.HashMap(Sqrt -> "sqrt", Square -> "square", Module -> "abs", Sin -> "sin", Cos -> "cos")
 
   val binFnAssoc = immutable.HashMap(Plus -> AssocLeft, Mult -> AssocLeft, Minus -> AssocLeft, Div -> AssocLeft)
 
   //list of all constants
   //when something like `x + pi` is parsed if symbol `x` is contained inside the below list it is parsed as a constant (in case of `x` it is not)
   //if it not then like a variable
-  val constants = immutable.List("pi")
+  val constants = immutable.List("pi", "e")
 
 
   implicit val showBinFn: Show[BinFn] = {
@@ -61,7 +65,8 @@ object Mather {
   }
 
   implicit val showUnFn: Show[UnFn] = {
-    x => unFnSyms(x.asInstanceOf[UnFn with Product with Serializable])
+    case x if !x.isInstanceOf[Dif] => unFnSyms(x.asInstanceOf[UnFn with Product with Serializable])
+    case x: Dif => "d/d"+x.variable.name
   }
 
   implicit def showTuple3[A : Show,B : Show,C : Show] : Show[(A,B,C)] = {
@@ -135,7 +140,7 @@ object Mather {
   //we assume that every expression IS a FUNCTION
   //i.e
   //EInt(1) is a function of unknown number of arguments that returns a constant value `1` at each point of its domain
-  //EConst(name) (to be added) is a function of unknown number of arguments that returns some unknown constant value (or parameter if you will) at each point of its domain
+  //EConst(name) is a function of unknown number of arguments that returns some unknown constant value (or parameter if you will) at each point of its domain
   //EVar(name) is a function of one argument - `name`, which is equal to its variable at each point of its domain
   //notice about domains:
   //we should somehow create a notation to express a domain of a function
@@ -186,8 +191,8 @@ object Mather {
         }
       case EBinFn(EInt(x), EBinFn(EInt(y), EInt(z),op), Mult) if op == Plus || op == Minus => //distributive property
         EBinFn(EInt(x * y), EInt(x * z), op)
-      case EBinFn(EInt(x), EBinFn(EInt(y), EInt(z),Div), Mult) =>
-        EBinFn(EInt(x * y), EInt(z), Div)
+      case EBinFn(a, EBinFn(b, c,Div), Mult) =>
+        EBinFn(EBinFn(a,b,Mult), c, Div)
       case EBinFn(EInt(x), EBinFn(EInt(y), EInt(z), Div), op) if op == Plus || op == Minus => EBinFn(EBinFn(EInt(x * z), EInt(y), op), EInt(z), Div)
       case EBinFn(EBinFn(EInt(a), EInt(b), Div), EInt(c), Div) if b != 0 && c != 0 => EBinFn(EInt(a), EInt(b * c), Div)
 
@@ -293,6 +298,26 @@ object Mather {
     ret
   }
 
+
+  def simplifyDifOp(op : Dif, expr : Expr) : Expr = {
+    expr match{
+      case EUnFn(arg, Sin) => EBinFn(EUnFn(arg, Cos), EUnFn(arg, op), Mult)
+      case EUnFn(arg, Cos) => EBinFn(EBinFn( EInt(-1), EUnFn(arg, Sin), Mult ), EUnFn(arg, op), Mult)
+      case EUnFn(arg, Square) => EBinFn(EBinFn( EInt(2), arg, Mult ), EUnFn(arg, op), Mult)
+      case EUnFn(arg, Sqrt) =>  EBinFn(EBinFn( EInt(1), EBinFn(EInt(2), EUnFn(arg, Sqrt), Mult), Div ),  EUnFn(arg, op), Mult)
+      case EBinFn(x, y, plusMinus) if plusMinus == Plus || plusMinus == Minus => EBinFn( EUnFn(x, op), EUnFn(y, op), plusMinus)
+      case EInt(_) | EConst(_) => EInt(0)
+      case EVar(sym) =>
+        if(sym == op.variable.name)
+          EInt(1)
+        else
+          EUnFn(expr,op)
+      case EBinFn(k, f, Mult) if isConst(k) =>
+        EBinFn(k, EUnFn(f, op), Mult)
+      case EBinFn(EVar(s1), EVar(s2), Mult) => EBinFn(EBinFn(EUnFn(EVar(s1), op), EVar(s2), Mult), EBinFn(EVar(s1), EUnFn(EVar(s2), op), Mult), Plus)
+    }
+  }
+
   def simplifyUnFn(unFn: EUnFn): Expr = {
     unFn match {
       case EUnFn(EInt(x), Sqrt) =>
@@ -303,6 +328,8 @@ object Mather {
       case EUnFn(EInt(x), Square) => EInt(x * x)
       case EUnFn(EInt(x), Module) => EInt(math.abs(x))
       case EUnFn(EUnFn(EInt(x), Square), Sqrt) => EUnFn(EInt(x), Module)
+
+      case EUnFn(expr, dif@Dif(_)) => simplifyDifOp(dif, expr)
 
 
       case EUnFn(x, Sin) =>
@@ -777,8 +804,19 @@ object Mather {
 
       if(res.isDefined) return res
     }
+
+    val pattern = (s"dif_([^1-9][1-9a-zA-Z]*)\\s*\\((.*)\\)").r
+    val result = pattern.findFirstMatchIn(str).map(x => (x.group(1), x.group(2)) )
+    println("result " + result)
+    val fil = result.filter{ case (variable, insides) => isValidEVar(variable) && areParenthesesValid(insides) }
+    if(fil.isDefined) return Some( (Dif(EVar(fil.get._1)), fil.get._2) )
+
+
     None
   }
+
+
+
 
   //levels start from 0
   //(1 + 2 * 5) + 3 / 4 - (5/(3+3))
