@@ -94,7 +94,7 @@ object Main {
     //println(solveLinearSystemSingular(mat, vec, x => x == EInt(0)).simplifyAll().show)
     println("rank: " + matrixRank(mat, isZero, simplify))
 
-    println("are col: " + areCollinear(Vector(Array(EInt(2), EInt(1))), Vector(Array(EInt(1), EBinFn(EInt(1), EInt(2), Div))), isZero, simplify))
+    println("are col: " + areCollinear(Vector(Array(EInt(0),EInt(2), EInt(1), EInt(2))), Vector(Array(EInt(0),EInt(1), EBinFn(EInt(1), EInt(2), Div), EInt(0))), isZero, simplify))
   }
 
 

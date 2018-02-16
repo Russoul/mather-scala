@@ -1167,7 +1167,7 @@ object Mather {
   }
 
 
-  //TODO does not work
+  //TODO needs extensive testing
   def areCollinear(a : Vector, b : Vector, isZero : Expr => Bool, simplify : Expr => Expr) : Bool = {
     if(a.array.length != b.array.length || a.array.length == 0) return false
 
@@ -1177,8 +1177,8 @@ object Mather {
     var k : Expr = EInt(0)
 
     Breaks.breakable{ //find first non zero
-      for(i <- 0 until a.array.length){
-        val bi = a(i)
+      for(i <- a.array.indices){
+        val bi = b(i)
         if(!isZero(bi)){
           k = simplify(EBinFn(a(i),bi,Div))
           j = i
@@ -1187,6 +1187,7 @@ object Mather {
       }
     }
 
+
     if(j == -1){ //b is zero
       return a.isZero(isZero)
     }
@@ -1194,7 +1195,7 @@ object Mather {
     for(i <- j + 1 until a.array.length){
       val k2 = simplify(EBinFn(a(i),b(i),Div))
 
-      if(k != k2) return false
+      if(k != k2 && !(isZero(a(i)) && isZero(b(i)) )) return false
     }
 
     true
@@ -1240,6 +1241,7 @@ object Mather {
     mat
   }
 
+  //TODO needs extensive testing
   def matrixToRowEchelonForm(mat : Matrix, isZero : Expr => Bool, simplify : Expr => Expr, i : Int = 0): Matrix ={
 
     if(i + 1 == mat.m){
@@ -1305,6 +1307,7 @@ object Mather {
     true
   }
 
+  //TODO needs extensive testing
   def matrixRank(mat : Matrix, isZero : Expr => Bool, simplify : Expr => Expr) : Int = {
     val rowEchelon = if(isInRowEchelonForm(mat, isZero)) mat else matrixToRowEchelonForm(mat, isZero, simplify)
 
