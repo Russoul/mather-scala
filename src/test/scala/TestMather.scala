@@ -1,10 +1,11 @@
 import cats.Show
 import cats.implicits._
 import me.russoul.mather.Mather._
+import me.russoul.mather.NewParser
 
 import scala.annotation.elidable
 import scala.annotation.elidable.ASSERTION
-import me.russoul.mather.Parser._
+import me.russoul.mather.NewParser._
 
 object TestMather{
 
@@ -19,8 +20,6 @@ object TestMather{
   }
 
   def testParsec() : Unit = {
-    import me.russoul.mather.NewParser._
-    import scala.util.parsing.combinator.Parsers
 
 
     val result1 = parseAll(parseExpr, "-1 + 2")
@@ -67,7 +66,8 @@ object TestMather{
 
   }
 
-  def testAll() : Unit = {
+  def testOldParser() : Unit = {
+    import me.russoul.mather.Parser._
     assert(e"pi" == EConst("pi"))
     assert(e"x" == EVar("x"))
     assert(isValidEInt("10"))
@@ -97,9 +97,12 @@ object TestMather{
     assertEqualShow(simplify(e"2 - 4/3", _ => true)._1 , e"2/3")
 
 
+
     assert(e"1 + 2" match{
       case e"$x + 2" => x == EInt(1)
-      case _ => false
+      case q =>
+        println("bad " + q)
+        false
     })
 
     assert(e"abs(sqrt(5 + y))" match{
@@ -109,7 +112,7 @@ object TestMather{
 
 
     assert(e"2 + sqrt(sqrt(3) / 2)" match{
-      case e"2+sqrt($x/2)" => x == EUnFn(EInt(3), Sqrt)
+      case e"2+sqrt($x/2)" => x == EBinFn(EInt(3), EBinFn(EInt(1), EInt(2), Div), Pow)
       case _ => false
     })
 
@@ -135,7 +138,7 @@ object TestMather{
   }
 
   def main(args : Array[String]) : Unit = {
-    testAll()
+    testOldParser()
     testParsec()
   }
 }

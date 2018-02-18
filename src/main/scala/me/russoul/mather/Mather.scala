@@ -2,7 +2,7 @@ package me.russoul.mather
 
 import cats._
 import cats.implicits._
-import Parser._
+import NewParser._
 
 import scala.collection.immutable.HashMap
 import scala.util.control.Breaks
@@ -777,10 +777,9 @@ object Mather {
 
   implicit class ExprParser(val sc: StringContext){
 
-
     object e{
 
-      private def deconstructTree(names : List[String], m: Expr, original : Expr, result : List[Expr]) : Option[List[Expr]] = {
+      /*private def deconstructTree(names : List[String], m: Expr, original : Expr, result : List[Expr]) : Option[List[Expr]] = {
         (m, original) match{
           case (EVar(x), expr) if names.contains(x) => Some(expr :: result) //found
           case (EInt(_), _) => None
@@ -798,15 +797,15 @@ object Mather {
             }
           case _ => None
         }
-      }
+      }*/
 
       //TODO needs more testing
       private def deconstructTreeFullMatch(names : List[String], m: Expr, original : Expr, result : List[Expr]) : Option[List[Expr]] = {
         (m, original) match{
           case (EVar(x), expr) if names.contains(x) => Some(expr :: result) //found
           case (EInt(x), _) => None
-          case (EUnFn(x1, ty1), EUnFn(x2,ty2)) if(ty1 == ty2) => deconstructTreeFullMatch(names, x1, x2, result)
-          case (EBinFn(x1,y1,ty1), EBinFn(x2,y2,ty2)) if (ty1 == ty2) =>
+          case (EUnFn(x1, ty1), EUnFn(x2,ty2)) if ty1 == ty2 => deconstructTreeFullMatch(names, x1, x2, result)
+          case (EBinFn(x1,y1,ty1), EBinFn(x2,y2,ty2)) if ty1 == ty2 =>
             val t1 = deconstructTreeFullMatch(names, x1, x2, result)
             t1 match{
               case Some(t) =>
@@ -833,17 +832,17 @@ object Mather {
       def unapplySeq(expr : Expr): Option[Seq[Expr]] = {
         val n = sc.parts.length
         if(n > 1){
-          val unknowns = for(i <- 0 until n - 1) yield "$x" + i
+          val unknowns = for(i <- 0 until n - 1) yield "$x" + i //TODO add special expr type for deconstruction ?
           val toParse = parse(sc.s(unknowns : _*)) //TODO other way around ? decompose original expr right away ?
           toParse match{
-            case Some(x) => deconstructTreeFullMatch(unknowns.toList, x, expr, Nil)
-            case None => None
+            case Success(x, _) => deconstructTreeFullMatch(unknowns.toList, x, expr, Nil)
+            case _ => None
           }
         }else{
           val parsed = parse(sc.s())
           parsed match{
-            case None => None
-            case Some(p) => if(p == expr) Some(Nil) else None
+            case Success(p, _) => if(p == expr) Some(Nil) else None
+            case _ => None
           }
         }
       }

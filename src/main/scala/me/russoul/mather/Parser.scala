@@ -30,12 +30,13 @@ object NewParser extends RegexParsers{
   }
 
   def parseVar: Parser[Expr] = {
-    (opt("-") ~ regex(letter.r) ~ rep(letter.r | digit.r)) ^? {
-      case (minus ~ x ~ xs) if !unFnSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !binOpSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !binFnSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !constants.contains((x :: xs).reduce(_ + _)) =>
+    (opt("-") ~ opt(literal("$")) ~ regex(letter.r) ~ rep(letter.r | digit.r)) ^? {
+      case (minus ~ dollar ~ x ~ xs) if !unFnSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !binOpSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !binFnSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !constants.contains((x :: xs).reduce(_ + _)) =>
+        val res = EVar((if(dollar.isDefined) "$" else "") + (x :: xs).reduce(_ + _))
         if(minus.isDefined){
-          EBinFn(EInt(-1), EVar((x :: xs).reduce(_ + _)), Mult)
+          EBinFn(EInt(-1), res, Mult)
         }else{
-          EVar((x :: xs).reduce(_ + _))
+          res
         }
 
     }
@@ -186,6 +187,10 @@ object NewParser extends RegexParsers{
   def parseExpr : Parser[Expr] = parseExprNoP | parseExprP
 
 
+
+  def parse(str : String) : ParseResult[Expr] = {
+    parseAll(parseExpr, str)
+  }
 
 }
 
