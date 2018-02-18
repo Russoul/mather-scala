@@ -18,15 +18,26 @@ object NewParser extends RegexParsers{
     opt("-") ~ rep1(digit.r) ^^ { case (minus ~ str) => EInt(Integer.parseInt( (if(minus.isDefined) "-" else "") + str.reduce(_ + _))) }
   }
 
-  def parseConst: Parser[EConst] = {
-    (regex(letter.r) ~ rep(letter.r | digit.r)) ^? {
-      case (x ~ xs) if constants.contains((x :: xs).reduce(_ + _)) => EConst((x :: xs).reduce(_ + _))
+  def parseConst: Parser[Expr] = {
+    (opt("-") ~ regex(letter.r) ~ rep(letter.r | digit.r)) ^? {
+      case (minus ~ x ~ xs) if !unFnSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !binOpSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && constants.contains((x :: xs).reduce(_ + _)) =>
+        if(minus.isDefined){
+          EBinFn(EInt(-1), EConst((x :: xs).reduce(_ + _)), Mult)
+        }else{
+          EConst((x :: xs).reduce(_ + _))
+        }
     }
   }
 
-  def parseVar: Parser[EVar] = {
-    (regex(letter.r) ~ rep(letter.r | digit.r)) ^? {
-      case (x ~ xs) if !constants.contains((x :: xs).reduce(_ + _)) => EVar((x :: xs).reduce(_ + _))
+  def parseVar: Parser[Expr] = {
+    (opt("-") ~ regex(letter.r) ~ rep(letter.r | digit.r)) ^? {
+      case (minus ~ x ~ xs) if !unFnSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !binOpSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !constants.contains((x :: xs).reduce(_ + _)) =>
+        if(minus.isDefined){
+          EBinFn(EInt(-1), EVar((x :: xs).reduce(_ + _)), Mult)
+        }else{
+          EVar((x :: xs).reduce(_ + _))
+        }
+
     }
   }
 
@@ -39,10 +50,15 @@ object NewParser extends RegexParsers{
 
 
 
-  def parseUnFnDefaultNotation : Parser[EUnFn] = {
+  def parseUnFnDefaultNotation : Parser[Expr] = {
 
-    (parseUnFnSimple <~ literal("(")) ~ (parseExpr <~ literal(")")) ^^ {
-      case typee ~ content => EUnFn(content, typee)
+    (opt("-") ~ parseUnFnSimple <~ literal("(")) ~ (parseExpr <~ literal(")")) ^^ {
+      case minus ~ typee ~ content =>
+        if(minus.isDefined){
+          EBinFn(EInt(-1), EUnFn(content, typee), Mult)
+        }else{
+          EUnFn(content, typee)
+        }
     }
   }
 
@@ -54,6 +70,7 @@ object NewParser extends RegexParsers{
   }
 
   //op must be available in `binOpSyms`
+  //TODO forbid this kind of situation: 1 + -1
   def parseLeftAssocOpsOnSameLevel : Parser[EBinFn] = {
     parseOpExpr ~ rep1(positioned(parsePosSym) ~ parseOpExpr) ^^ {
       case x ~ ( (op ~ expr) :: xs) =>

@@ -26,9 +26,18 @@ object TestMather{
     assert(result1.successful && result1.get == EBinFn(EInt(-1),EInt(2),Plus))
 
 
-    val result2 = parseAll(parseExpr, "sqrt(1)") //TODO fix the parser
-    println(result2)
-    if(result2.successful) println(result2.get.show)
+    val result2 = parseAll(parseExpr, "a + b + c")
+    assert(result2.successful && result2.get == EBinFn(EBinFn(EVar("a"),EVar("b"),Plus),EVar("c"),Plus))
+
+    val result3 = parseAll(parseExpr, "sqrt(1 - 2 * sin(-x))")
+    assertEqualShow(result3.get, EUnFn(EBinFn(EInt(1),EBinFn(EInt(2),EUnFn(EBinFn(EInt(-1),EVar("x"),Mult),Sin),Mult),Minus),Sqrt))
+
+
+    val result4 = parseAll(parseExpr, "-sqrt(0)")
+    assertEqualShow(result4.get, EBinFn(EInt(-1),EUnFn(EInt(0),Sqrt),Mult))
+
+    val result5 = parseAll(parseExpr, "sin(x * cos(y) * abs(z) * -pi / 4)")
+    assertEqualShow(result5.get, EUnFn(EBinFn(EBinFn(EBinFn(EBinFn(EVar("x"),EUnFn(EVar("y"),Cos),Mult),EUnFn(EVar("z"),Module),Mult),EBinFn(EInt(-1),EConst("pi"),Mult),Mult),EInt(4),Div),Sin))
 
   }
 
