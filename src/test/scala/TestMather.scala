@@ -94,6 +94,10 @@ object TestMather{
     assertEqualShow(parse("a - b - c") , Some(EBinFn(EBinFn(EVar("a"), EVar("b"), Minus), EVar("c"), Minus)) )
     assertEqualShow(parse("sqrt( 2 + 5 - 10 + abs( -1 ) )") , Some(EUnFn(EBinFn(EBinFn(EBinFn(EInt(2), EInt(5), Plus), EInt(10), Minus), EUnFn(EInt(-1), Module), Plus), Sqrt)))
 
+
+  }
+
+  def testAll(): Unit ={
     assertEqualShow(simplify(e"2 - 4/3", _ => true)._1 , e"2/3")
 
 
@@ -124,7 +128,7 @@ object TestMather{
     e"2 * 1 + 5 * sqrt(5)" //<-- those will throw None.get exception if their expressions can not be parsed
     e"-1 * x + y"
     e"1+2"
-    import me.russoul.mather.NewParser._
+
     assert(simplifyOneStep(e"sin(pi/4)") == parseAll(parseExpr, "sqrt(2)/2").get)
     println(simplifyFull(e"sin(x) - sin(x)").show) //TODO output is incorrect, debug
 
@@ -134,11 +138,11 @@ object TestMather{
 
     //TODO simplification rules
     //TODO equivalence rules
-
   }
 
   def main(args : Array[String]) : Unit = {
     testOldParser()
     testParsec()
+    testAll()
   }
 }

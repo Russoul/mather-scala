@@ -21,6 +21,12 @@ object Mather {
   def impossible[T <: Any] : T = throw new Exception("impossible happened")
 
 
+  case class FuncEnv(env : HashMap[EVar, List[EVar]]) //this class contains dependencies of variables; variable may be dependent or independent
+  //e.g: f(x) = x, in this function x is independent variable, f depends on x
+  //but
+  //f(x, x(y)) = x, in this function x depends on y, y is independent, f explicitly depends on x and implicitly on y
+  //FuncEnv should be defined per scope, so it may cover multiple expressions
+
   //notational associativity
   sealed trait Assoc
   case object AssocRight extends Assoc
@@ -171,6 +177,8 @@ object Mather {
 
   case class EVar(name: String) extends Expr
 
+  case object EInf extends Expr //infinity
+
   case class EInt(value: Int) extends Expr
 
   case class EConst(name : String) extends Expr
@@ -183,12 +191,16 @@ object Mather {
     case EInt(x) => if (x >= 0) x.toString else "(" + x.toString + ")"
     case EConst(x) => x
     case EVar(x) => x
+    case EInf => "inf"
+    case EBinFn(EInt(-1), EInf, Mult) => "-inf"
+    case EBinFn(EInf, EInt(-1), Mult) => "-inf"
     case EBinFn(x, y, f) =>
       f match{
         case Pow => f.show + "(" + x.show + ", " + y.show + ")"
         case _ => "(" + x.show + " " + f.show + " " + y.show + ")"
       }
     case EUnFn(x, f) => f.show + "(" + x.show + ")"
+
   }
 
 
@@ -372,7 +384,7 @@ object Mather {
 
   def isSimplifiable(expr: Expr) : Bool = {
     val ret = expr match{
-      case EInt(_) | EVar(_) | EConst(_) => false
+      case EInt(_) | EVar(_) | EConst(_) | EInf => false
       case f@EBinFn(x,y,_) =>
         if (isSimplifiable(x)) true else{
           if(isSimplifiable(y)) true else{
@@ -393,7 +405,7 @@ object Mather {
 
 
     expr match{
-      case EInt(_) | EVar(_) | EConst(_) => (expr, nat)
+      case EInt(_) | EVar(_) | EConst(_) | EInf => (expr, nat)
       case f@EBinFn(x,y,ft) =>
         if(isSimplifiable(x)){
           val inner = simplify(x, cond, nat)
@@ -670,7 +682,7 @@ object Mather {
 
   def applyRules(expr : Expr, ruleCombos : Stream[Expr => Option[Expr]]) : Stream[Expr] = {
     expr match{
-      case s@(EInt(_) | EConst(_) | EVar(_)) => s #:: ruleCombos.flatMap(rule => rule(s))
+      case s@(EInt(_) | EConst(_) | EVar(_) | EInf) => s #:: ruleCombos.flatMap(rule => rule(s))
       case f@EUnFn(arg, op) =>
         val inner = applyRules(arg, ruleCombos)
         inner.map(x => EUnFn(x, op)) ++ inner.flatMap(
@@ -697,7 +709,7 @@ object Mather {
   //trying to apply given rule to expression recursively(if it cannot apply the rule to given expr it applies it to its children); return after the first success
   def applyRuleRec(expr : Expr, ruleCombo : Expr => Option[Expr]) : Option[Expr] = {
     expr match{
-      case s@(EInt(_)|EVar(_)|EConst(_)) => ruleCombo(s)
+      case s@(EInt(_)|EVar(_)|EConst(_)|EInf) => ruleCombo(s)
       case f@EUnFn(arg, op) => ruleCombo(f) match{
         case ok@Some(_) => ok
         case None => for(ok <- applyRuleRec(arg, ruleCombo)) yield EUnFn(ok, op)
@@ -765,7 +777,7 @@ object Mather {
   def substitute(fullExpr: Expr, sym : EVar, sub : Expr) : Expr = {
     fullExpr match{
       case EVar(x) if x == sym.name => sub
-      case e@(EInt(_) | EConst(_) | EVar(_)) => e
+      case e@(EInt(_) | EConst(_) | EVar(_) | EInf) => e
       case EUnFn(e, op) => EUnFn(substitute(e, sym, sub), op)
       case EBinFn(e1, e2, op) => EBinFn(substitute(e1, sym, sub), substitute(e2, sym, sub), op)
     }
@@ -804,6 +816,7 @@ object Mather {
         (m, original) match{
           case (EVar(x), expr) if names.contains(x) => Some(expr :: result) //found
           case (EInt(x), _) => None
+          case (EInf, _) => None
           case (EUnFn(x1, ty1), EUnFn(x2,ty2)) if ty1 == ty2 => deconstructTreeFullMatch(names, x1, x2, result)
           case (EBinFn(x1,y1,ty1), EBinFn(x2,y2,ty2)) if ty1 == ty2 =>
             val t1 = deconstructTreeFullMatch(names, x1, x2, result)
