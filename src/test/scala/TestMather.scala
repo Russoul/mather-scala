@@ -130,11 +130,9 @@ object TestMather{
     e"1+2"
 
     assert(simplifyOneStep(e"sin(pi/4)") == parseAll(parseExpr, "sqrt(2)/2").get)
-    println(simplifyFull(e"sin(x) - sin(x)").show) //TODO output is incorrect, debug
+    println(simplifyFull(e"sin(x) - sin(x)").show) //TODO <- should simplify to {0}, but this: 1/x - 1/x should simplify to {0, x != 0}
 
-    //TODO `-x` cannot be parsed use `-1 * x` for now
     //TODO test sin simplifications
-    //TODO test all simplifications
 
     //TODO simplification rules
     //TODO equivalence rules

@@ -21,11 +21,40 @@ object Mather {
   def impossible[T <: Any] : T = throw new Exception("impossible happened")
 
 
+  case class FuncDef(binding : EVar, expr : Option[Expr])//f = 2 * x, f is binding, expr is some valid expr or none(if it is none than f is unknown function)
+
   case class FuncEnv(env : HashMap[EVar, List[EVar]]) //this class contains dependencies of variables; variable may be dependent or independent
   //e.g: f(x) = x, in this function x is independent variable, f depends on x
   //but
   //f(x, x(y)) = x, in this function x depends on y, y is independent, f explicitly depends on x and implicitly on y
-  //FuncEnv should be defined per scope, so it may cover multiple expressions
+  //FuncEnv must be defined per scope, so it covers multiple expressions
+
+  case class Scope(defs : List[FuncDef], expr : Expr, env : FuncEnv)
+  //u = u(gzi, eta) //u is a function of gzi and eta, it is unknown, but we can do usefull stuff with it, like differentiation
+
+
+  //f = pow(x,2)                           <- f automatically infered as f(x)
+  //y = 2 * x
+  //g = y + 2 * x + 1                      <- g infered as g(x,y(x))
+  //d/dx(g)              <- last expr
+
+  //what do we get ?
+  //x - independent
+  //y - is function of x            <- this info is stored in `env`
+  //f is function of x
+  //g is function of x and y
+
+  //order matters
+
+  //the following is incorrect:
+
+  //g = y + 2 * x + 1         //this line tells us that y and x are independent
+  //y = 2 * x                 //this line breaks the independence
+
+  //the above ^^ is actually a system of equations
+
+  //scope is just a sequence of variable(function) definitions + last expr that represents the result of calculation
+  //those must not intervene or produce cyclic references(relations between each other)
 
   //notational associativity
   sealed trait Assoc

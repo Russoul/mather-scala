@@ -4,6 +4,14 @@ object Helper {
 
   import Mather._
 
+  val NegEInf = EBinFn(EInt(-1), EInf, Mult)
+
+  def findDomain(expr : Expr) : Option[IInterval] = {
+    expr match{
+
+    }
+  }
+
 
   //TODO automatic solvers of equation: f(x) = 0; (given expr `a` solver would find the type of equation and solve it if type is known)
 
