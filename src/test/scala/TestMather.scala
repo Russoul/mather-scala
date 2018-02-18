@@ -22,6 +22,7 @@ object TestMather{
     import me.russoul.mather.NewParser._
     import scala.util.parsing.combinator.Parsers
 
+
     val result1 = parseAll(parseExpr, "-1 + 2")
     assert(result1.successful && result1.get == EBinFn(EInt(-1),EInt(2),Plus))
 
@@ -38,6 +39,15 @@ object TestMather{
 
     val result5 = parseAll(parseExpr, "sin(x * cos(y) * abs(z) * -pi / 4)")
     assertEqualShow(result5.get, EUnFn(EBinFn(EBinFn(EBinFn(EBinFn(EVar("x"),EUnFn(EVar("y"),Cos),Mult),EUnFn(EVar("z"),Module),Mult),EBinFn(EInt(-1),EConst("pi"),Mult),Mult),EInt(4),Div),Sin))
+
+    val result6 = parseAll(parseExpr, "1 + (2 + 3)")
+    assertEqualShow(result6.get, EBinFn(EInt(1),EBinFn(EInt(2),EInt(3),Plus),Plus))
+
+    val result8 = parseAll(parseExpr, "(cos(x) * sin(y))")
+    assertEqualShow(result8.get, EBinFn(EUnFn(EVar("x"),Cos),EUnFn(EVar("y"),Sin),Mult))
+
+    val result7 = parseAll(parseExpr, "-d/dx  (x + 2*square(x))") //d/d...\s*(...), d/d... part must be have no whitespace
+    assertEqualShow(result7.get, EBinFn(EInt(-1), EUnFn(EBinFn(EVar("x"),EBinFn(EInt(2),EUnFn(EVar("x"),Square),Mult),Plus),Dif(EVar("x"))), Mult))
 
   }
 

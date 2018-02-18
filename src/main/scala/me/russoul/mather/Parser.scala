@@ -41,6 +41,14 @@ object NewParser extends RegexParsers{
     }
   }
 
+  def parseVarWithoutMinus: Parser[EVar] = {
+    (regex(letter.r) ~ rep(letter.r | digit.r)) ^? {
+      case (x ~ xs) if !unFnSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !binOpSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !constants.contains((x :: xs).reduce(_ + _)) =>
+        EVar((x :: xs).reduce(_ + _))
+
+    }
+  }
+
   def parseUnFnSimple : Parser[UnFn] = {
     rep1(letter.r) ^? {
       case xs if unFnSyms.values.exists(x => x == xs.reduce(_ + _)) =>
@@ -63,6 +71,13 @@ object NewParser extends RegexParsers{
   }
 
 
+  def parseDifOp : Parser[Expr] = {
+    opt("-") ~ (literal("d/d") ~> parseVarWithoutMinus <~ literal("(")) ~ (parseExpr <~ literal(")")) ^^ {
+      case minus ~ variable ~ expr => if(minus.isDefined) EBinFn(EInt(-1), EUnFn(expr, Dif(variable)), Mult) else EUnFn(expr, Dif(variable))
+    }
+  }
+
+
   case class PosString(str : String) extends Positional
 
   def parsePosSym : Parser[PosString] = {
@@ -70,7 +85,7 @@ object NewParser extends RegexParsers{
   }
 
   //op must be available in `binOpSyms`
-  //TODO forbid this kind of situation: 1 + -1
+  //TODO forbid this kind of situation: 1 + -1, allow only: 1 + (-1)
   def parseLeftAssocOpsOnSameLevel : Parser[EBinFn] = {
     parseOpExpr ~ rep1(positioned(parsePosSym) ~ parseOpExpr) ^^ {
       case x ~ ( (op ~ expr) :: xs) =>
@@ -115,28 +130,21 @@ object NewParser extends RegexParsers{
     }
   }
 
-  def parseOpExprP : Parser[Expr] = {
-    literal("(") ~ (
-      parseInt                 |
-      parseConst               |
-      parseVar                 |
-      parseUnFnDefaultNotation) ~ literal(")") ^^ {
-      case _ ~ expr ~ _ => expr
-    }
-  }
 
   def parseOpExprNoP : Parser[Expr] = {
       parseInt |
+      parseDifOp | //must go before var
       parseConst |
       parseVar |
       parseUnFnDefaultNotation
   }
 
-  def parseOpExpr : Parser[Expr] = parseOpExprNoP | parseOpExprP
+  def parseOpExpr : Parser[Expr] = parseOpExprNoP | parseExprP
 
   def parseExprP : Parser[Expr] = {
     literal("(") ~ ( parseLeftAssocOpsOnSameLevel |
                               parseInt                 |
+                              parseDifOp | //must go before var
                               parseConst               |
                               parseVar                 |
                           parseUnFnDefaultNotation) ~ literal(")") ^^ {
@@ -145,8 +153,9 @@ object NewParser extends RegexParsers{
   }
 
   def parseExprNoP : Parser[Expr] = {
-    parseLeftAssocOpsOnSameLevel |
+    parseLeftAssocOpsOnSameLevel | //must always(or almost always) be first
       parseInt |
+      parseDifOp | //must go before var
       parseConst |
       parseVar |
       parseUnFnDefaultNotation
