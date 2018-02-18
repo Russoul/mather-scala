@@ -37,12 +37,12 @@ object Mather {
 
   case object Div extends BinFn
 
+  case object Pow extends BinFn
+
 
   sealed trait UnFn
 
-  case object Sqrt extends UnFn
-
-  case object Square extends UnFn
+  case object Sqrt extends UnFn //wont ever get parsed, will be parsed as pow(x,1/2) (in the new parser)
 
   case object Module extends UnFn
 
@@ -53,6 +53,7 @@ object Mather {
   case class Dif(variable : EVar) extends UnFn
 
   val binOpSyms = immutable.HashMap(Plus -> "+", Minus -> "-", Mult -> "*", Div -> "/")
+  val binFnSyms = immutable.HashMap(Pow -> "pow")
   def keyForValue[Key, Value](hashMap: HashMap[Key, Value], value : Value) : Option[Key] = {
     for( (k,v) <- hashMap ){
       if(v == value) return Some(k).asInstanceOf[Option[Key]]
@@ -62,9 +63,11 @@ object Mather {
   }
 
   //those are used as `default` function notation, e.g: sqrt(1) or square(2)
-  val unFnSyms = immutable.HashMap(Sqrt -> "sqrt", Square -> "square", Module -> "abs", Sin -> "sin", Cos -> "cos")
+  val unFnSyms = immutable.HashMap(Sqrt -> "sqrt", Module -> "abs", Sin -> "sin", Cos -> "cos")
 
-  val binFnAssoc = immutable.HashMap(Plus -> AssocLeft, Mult -> AssocLeft, Minus -> AssocLeft, Div -> AssocLeft)
+  //this is `default` (notational) associativity, used when parsing expr from string, e.g: a + b + c will be parsed as (a + b) + c
+  //TODO not used yet inside new parser
+  val binOpAssoc = immutable.HashMap(Plus -> AssocLeft, Mult -> AssocLeft, Minus -> AssocLeft, Div -> AssocLeft)
 
   //list of all constants
   //when something like `x + pi` is parsed if symbol `x` is contained inside the below list it is parsed as a constant (in case of `x` it is not)
@@ -73,7 +76,8 @@ object Mather {
 
 
   implicit val showBinFn: Show[BinFn] = {
-    x => binOpSyms(x.asInstanceOf[BinFn with Product with Serializable])
+    case Pow => "pow"
+    case x => binOpSyms(x.asInstanceOf[BinFn with Product with Serializable])
   }
 
   implicit val showUnFn: Show[UnFn] = {
@@ -81,11 +85,9 @@ object Mather {
     case x: Dif => "d/d"+x.variable.name
   }
 
-  implicit def showTuple3[A : Show,B : Show,C : Show] : Show[(A,B,C)] = {
-    t3 => s"(${t3._1}, ${t3._2}, ${t3._3})"
-  }
 
 
+  //TODO isAssoc, isCommut, precedence must only be used with operators and not functions(like pow)
   def isAssoc(fn: BinFn): Bool = {
     fn match {
       case Plus => true
@@ -113,7 +115,10 @@ object Mather {
 
   //returns notational associativity
   def getAssoc(fn : BinFn) : Assoc = {
-    binFnAssoc(fn.asInstanceOf[BinFn with Product with Serializable])
+    fn match{
+      case Pow => throw new Exception("not operator")
+      case _ => binOpAssoc(fn.asInstanceOf[BinFn with Product with Serializable])
+    }
   }
 
   def isWholeDivision(a: Int, b: Int): Bool = if(b == 0)true else a % b == 0
@@ -131,6 +136,15 @@ object Mather {
     GCD(b, a % b)
   }
 
+  //non negative integer power
+  def upow(a : Int, n : Int) : Int = {
+    n match{
+      case 1 => a
+      case 0 => 1
+      case _ => a * upow(a, n - 1)
+    }
+  }
+
   def isConst(expr : Expr) : Bool = { //returns true if the function returns constant value for all inputs(this actually means that there are no variables inside its tree)
     expr match{
       case EInt(_) | EConst(_) => true
@@ -141,11 +155,7 @@ object Mather {
   }
 
 
-  /*sealed trait Ty
-  case object TyInt extends Ty
-  case class TyBinFn[A <: Ty, B <: Ty, F <: BinFn](a : A, b : B, f : F) extends Ty
-  case object TyVar extends Ty
-  case class TyUnFn[A <: Ty, F <: UnFn](a : A, f : F) extends Ty*/
+
 
   //TODO VERY IMPORTANT NOTICE !!!!!!!
   //In order to simplify things A LOT + make them mathematically (theoretically) correct
@@ -173,14 +183,18 @@ object Mather {
     case EInt(x) => if (x >= 0) x.toString else "(" + x.toString + ")"
     case EConst(x) => x
     case EVar(x) => x
-    case EBinFn(x, y, f) => "(" + x.show + " " + f.show + " " + y.show + ")"
+    case EBinFn(x, y, f) =>
+      f match{
+        case Pow => f.show + "(" + x.show + ", " + y.show + ")"
+        case _ => "(" + x.show + " " + f.show + " " + y.show + ")"
+      }
     case EUnFn(x, f) => f.show + "(" + x.show + ")"
   }
 
 
   def simplifyBinFn(binFn: EBinFn): Expr = {
     val ret = binFn match {
-      case EBinFn(EInt(x), EInt(y), typee) =>             //<--------  Int # Int
+      case EBinFn(EInt(x), EInt(y), typee) if typee != Pow =>             //<--------  Int # Int, pow handled separately
         typee match {
           case Plus => EInt(x + y)
           case Minus => EInt(x - y)
@@ -258,19 +272,7 @@ object Mather {
       case EBinFn(EBinFn(EInt(a), EInt(b), Div), EBinFn(EInt(c), EInt(d), Div), Mult) =>
         //(a/b) * (c/d)
         EBinFn(EInt(a * c), EInt(b * d), Div)
-      /*case e"$a + $c / $di" =>
-        di match{
-          case EInt(d) if d != 0 =>
-            e"($a * $di + $c) / $di"
-          case _ => binFn
-        }*/
 
-      /*case e"$a - $c / $di" => //a + c/d //where d is a number != 0
-      di match{
-        case EInt(d) if d != 0 =>
-          e"($a * $di - $c) / $di"
-        case _ => binFn
-      }*/
 
 
       //a + b/c //where c is a number != 0
@@ -305,6 +307,19 @@ object Mather {
           case Minus => EBinFn(EInt(-1), y, Mult)
           case Div => EInt(0)
         }
+
+      case EBinFn(EInt(x), EBinFn(EInt(1), EInt(2), Mult), Pow) =>
+        if(isPerfectSquare(x))
+          EInt(math.sqrt(x).toInt)
+        else
+          binFn
+
+      case EBinFn(EInt(x), EInt(n), Pow) =>
+        if(n >= 0)
+          EInt(upow(x, n))
+        else
+          EBinFn(EInt(1), EInt(upow(x, n)), Div)
+
       case _ => binFn
     }
     ret
@@ -315,8 +330,7 @@ object Mather {
     expr match{
       case EUnFn(arg, Sin) => EBinFn(EUnFn(arg, Cos), EUnFn(arg, op), Mult)
       case EUnFn(arg, Cos) => EBinFn(EBinFn( EInt(-1), EUnFn(arg, Sin), Mult ), EUnFn(arg, op), Mult)
-      case EUnFn(arg, Square) => EBinFn(EBinFn( EInt(2), arg, Mult ), EUnFn(arg, op), Mult)
-      case EUnFn(arg, Sqrt) =>  EBinFn(EBinFn( EInt(1), EBinFn(EInt(2), EUnFn(arg, Sqrt), Mult), Div ),  EUnFn(arg, op), Mult)
+      case EBinFn(arg, pow, Pow) if isConst(pow) => EBinFn(pow, EBinFn(arg, EBinFn(pow, EInt(1), Minus), Pow), Mult)
       case EBinFn(x, y, plusMinus) if plusMinus == Plus || plusMinus == Minus => EBinFn( EUnFn(x, op), EUnFn(y, op), plusMinus)
       case EInt(_) | EConst(_) => EInt(0)
       case EVar(sym) =>
@@ -332,14 +346,7 @@ object Mather {
 
   def simplifyUnFn(unFn: EUnFn): Expr = {
     unFn match {
-      case EUnFn(EInt(x), Sqrt) =>
-        if (isPerfectSquare(x))
-          EInt(math.sqrt(x).toInt)
-        else
-          unFn
-      case EUnFn(EInt(x), Square) => EInt(x * x)
       case EUnFn(EInt(x), Module) => EInt(math.abs(x))
-      case EUnFn(EUnFn(EInt(x), Square), Sqrt) => EUnFn(EInt(x), Module)
 
       case EUnFn(expr, dif@Dif(_)) => simplifyDifOp(dif, expr)
 
@@ -349,28 +356,15 @@ object Mather {
           case EInt(0) | EConst("pi") => EInt(0)
           case EBinFn(EConst("pi"),EInt(2),Div) => EInt(1)
           case EBinFn(EBinFn(EInt(3), EConst("pi"), Mult), EInt(2), Div ) => EInt(-1)
-          case EBinFn(EConst("pi"), EInt(4), Div) | EBinFn(EBinFn(EInt(3), EConst("pi"), Mult), EInt(4), Div ) => EBinFn(EUnFn(EInt(2), Sqrt),EInt(2),Div)
+          case EBinFn(EConst("pi"), EInt(4), Div) | EBinFn(EBinFn(EInt(3), EConst("pi"), Mult), EInt(4), Div ) => EBinFn(EBinFn(EInt(2), EBinFn(EInt(1), EInt(2), Div),Pow),EInt(2),Div)
           case EBinFn(EConst("pi"), EInt(6), Div) | EBinFn(EBinFn(EInt(5), EConst("pi"), Mult), EInt(6), Div ) => EBinFn(EInt(1), EInt(2), Div)
-          case EBinFn(EConst("pi"), EInt(3), Div) | EBinFn(EBinFn(EInt(2), EConst("pi"), Mult), EInt(3), Div ) => EBinFn(EUnFn(EInt(3), Sqrt),EInt(2),Div)
+          case EBinFn(EConst("pi"), EInt(3), Div) | EBinFn(EBinFn(EInt(2), EConst("pi"), Mult), EInt(3), Div ) => EBinFn(EBinFn(EInt(3), EBinFn(EInt(1), EInt(2), Div),Pow),EInt(2),Div)
           case EBinFn(EBinFn(EInt(7), EConst("pi"), Mult), EInt(6), Div ) | EBinFn(EBinFn(EInt(11), EConst("pi"), Mult), EInt(6), Div ) => EBinFn(EInt(-1), EInt(2), Div)
-          case EBinFn(EBinFn(EInt(5), EConst("pi"), Mult), EInt(4), Div ) | EBinFn(EBinFn(EInt(7), EConst("pi"), Mult), EInt(4), Div ) => EBinFn(EUnFn(EInt(2), Sqrt),EInt(-2),Div)
-          case EBinFn(EBinFn(EInt(4), EConst("pi"), Mult), EInt(3), Div ) | EBinFn(EBinFn(EInt(5), EConst("pi"), Mult), EInt(3), Div ) => EBinFn(EUnFn(EInt(3), Sqrt),EInt(-2),Div)
+          case EBinFn(EBinFn(EInt(5), EConst("pi"), Mult), EInt(4), Div ) | EBinFn(EBinFn(EInt(7), EConst("pi"), Mult), EInt(4), Div ) => EBinFn(EBinFn(EInt(2), EBinFn(EInt(1), EInt(2), Div),Pow),EInt(-2),Div)
+          case EBinFn(EBinFn(EInt(4), EConst("pi"), Mult), EInt(3), Div ) | EBinFn(EBinFn(EInt(5), EConst("pi"), Mult), EInt(3), Div ) => EBinFn(EBinFn(EInt(3), EBinFn(EInt(1), EInt(2), Div),Pow),EInt(-2),Div)
           case _ => unFn
         }
 
-      /*case e@e"sin($x)" =>
-        x match{
-          case e"0" | e"pi" => EInt(0)
-          case e"pi/2" => EInt(1)
-          case e"3 * pi / 2" => EInt(-1)
-          case e"pi/4" | e"3*pi/4" => e"sqrt(2)/2"
-          case e"pi/6" | e"5*pi/6" => e"1/2"
-          case e"pi/3" | e"2*pi/3" => e"sqrt(3)/2"
-          case e"7*pi/6" | e"11*pi/6" => e"-1 / 2"
-          case e"5*pi/4" | e"7*pi/4" => e"-1 * sqrt(2)/2"
-          case e"4*pi/3" | e"5*pi/3" => e"-1 * sqrt(3)/2"
-          case _ => e
-        }*/
 
       case _ => unFn
     }

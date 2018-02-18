@@ -19,6 +19,14 @@ object Main {
   //TODO don't show redundant parenthesis when pretty printing expression
   //TODO add pow, make it work with current Square and Sqrt
 
+
+  //TODO uniform system for defining un and bin functions and un and bin operators
+
+  //TODO a way to say that a function `f` is dependent on some argument(saying that a function depends on x implies that it does not depend on any other variable)
+  //TODO if x is a function itself ^^ than f depends on the arguments of x automatically
+
+  //TODO a way to do the ^^^ is to add a special environment that for each variable(function) tells if it depends on any other or it is unbound(independent)
+
   //def matrixMultiply(a : Matrix, b : Matrix)(ref:R[a.m == b.n]) ==>
   //def matrixMultiply(a : Matrix, b : Matrix){
   //  assume(a.m == b.n)

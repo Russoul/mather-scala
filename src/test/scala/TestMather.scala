@@ -31,11 +31,11 @@ object TestMather{
     assert(result2.successful && result2.get == EBinFn(EBinFn(EVar("a"),EVar("b"),Plus),EVar("c"),Plus))
 
     val result3 = parseAll(parseExpr, "sqrt(1 - 2 * sin(-x))")
-    assertEqualShow(result3.get, EUnFn(EBinFn(EInt(1),EBinFn(EInt(2),EUnFn(EBinFn(EInt(-1),EVar("x"),Mult),Sin),Mult),Minus),Sqrt))
+    assertEqualShow(result3.get, EBinFn(EBinFn(EInt(1),EBinFn(EInt(2),EUnFn(EBinFn(EInt(-1),EVar("x"),Mult),Sin),Mult),Minus),EBinFn(EInt(1), EInt(2),Div), Pow))
 
 
     val result4 = parseAll(parseExpr, "-sqrt(0)")
-    assertEqualShow(result4.get, EBinFn(EInt(-1),EUnFn(EInt(0),Sqrt),Mult))
+    assertEqualShow(result4.get, EBinFn(EInt(-1),EBinFn(EInt(0),EBinFn(EInt(1), EInt(2), Div), Pow),Mult))
 
     val result5 = parseAll(parseExpr, "sin(x * cos(y) * abs(z) * -pi / 4)")
     assertEqualShow(result5.get, EUnFn(EBinFn(EBinFn(EBinFn(EBinFn(EVar("x"),EUnFn(EVar("y"),Cos),Mult),EUnFn(EVar("z"),Module),Mult),EBinFn(EInt(-1),EConst("pi"),Mult),Mult),EInt(4),Div),Sin))
@@ -46,8 +46,24 @@ object TestMather{
     val result8 = parseAll(parseExpr, "(cos(x) * sin(y))")
     assertEqualShow(result8.get, EBinFn(EUnFn(EVar("x"),Cos),EUnFn(EVar("y"),Sin),Mult))
 
-    val result7 = parseAll(parseExpr, "-d/dx  (x + 2*square(x))") //d/d...\s*(...), d/d... part must be have no whitespace
-    assertEqualShow(result7.get, EBinFn(EInt(-1), EUnFn(EBinFn(EVar("x"),EBinFn(EInt(2),EUnFn(EVar("x"),Square),Mult),Plus),Dif(EVar("x"))), Mult))
+    val result7 = parseAll(parseExpr, "-d/dx  (x + 2*pow(x,2))") //d/d...\s*(...), d/d... part must be have no whitespace
+    assertEqualShow(result7.get, EBinFn(EInt(-1), EUnFn(EBinFn(EVar("x"),EBinFn(EInt(2),EBinFn(EVar("x"),EInt(2), Pow),Mult),Plus),Dif(EVar("x"))), Mult))
+
+    val result9 = parseAll(parseExpr, "pow(x, 1)")
+    assertEqualShow(result9.get, EBinFn(EVar("x"),EInt(1),Pow))
+
+    val result10 = parseAll(parseExpr, "d/dt( -pow(y, x) + pow(t,1/2)  )")
+    assertEqualShow(result10.get, EUnFn(EBinFn(EBinFn(EInt(-1),EBinFn(EVar("y"),EVar("x"),Pow),Mult),EBinFn(EVar("t"),EBinFn(EInt(1), EInt(2), Div),Pow),Plus),Dif(EVar("t"))))
+
+    //TODO remove sqrt, square
+    //TODO log(expr, base)
+
+    //TODO parse tan and cot (no need to add extra UnFn type for them)
+
+    //TODO add testing for dif op
+    //TODO deprecate old parser
+
+    //TODO checks of commutativity, associativity and precedence should be done only on operators but not on functions (like pow)
 
   }
 
@@ -105,7 +121,8 @@ object TestMather{
     e"2 * 1 + 5 * sqrt(5)" //<-- those will throw None.get exception if their expressions can not be parsed
     e"-1 * x + y"
     e"1+2"
-    assert(simplifyOneStep(e"sin(pi/4)") == e"sqrt(2)/2")
+    import me.russoul.mather.NewParser._
+    assert(simplifyOneStep(e"sin(pi/4)") == parseAll(parseExpr, "sqrt(2)/2").get)
     println(simplifyFull(e"sin(x) - sin(x)").show) //TODO output is incorrect, debug
 
     //TODO `-x` cannot be parsed use `-1 * x` for now

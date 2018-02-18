@@ -20,7 +20,7 @@ object NewParser extends RegexParsers{
 
   def parseConst: Parser[Expr] = {
     (opt("-") ~ regex(letter.r) ~ rep(letter.r | digit.r)) ^? {
-      case (minus ~ x ~ xs) if !unFnSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !binOpSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && constants.contains((x :: xs).reduce(_ + _)) =>
+      case (minus ~ x ~ xs) if !unFnSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !binOpSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !binFnSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && constants.contains((x :: xs).reduce(_ + _)) =>
         if(minus.isDefined){
           EBinFn(EInt(-1), EConst((x :: xs).reduce(_ + _)), Mult)
         }else{
@@ -31,7 +31,7 @@ object NewParser extends RegexParsers{
 
   def parseVar: Parser[Expr] = {
     (opt("-") ~ regex(letter.r) ~ rep(letter.r | digit.r)) ^? {
-      case (minus ~ x ~ xs) if !unFnSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !binOpSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !constants.contains((x :: xs).reduce(_ + _)) =>
+      case (minus ~ x ~ xs) if !unFnSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !binOpSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !binFnSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !constants.contains((x :: xs).reduce(_ + _)) =>
         if(minus.isDefined){
           EBinFn(EInt(-1), EVar((x :: xs).reduce(_ + _)), Mult)
         }else{
@@ -41,9 +41,10 @@ object NewParser extends RegexParsers{
     }
   }
 
+  //TODO code duplication
   def parseVarWithoutMinus: Parser[EVar] = {
     (regex(letter.r) ~ rep(letter.r | digit.r)) ^? {
-      case (x ~ xs) if !unFnSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !binOpSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !constants.contains((x :: xs).reduce(_ + _)) =>
+      case (x ~ xs) if !unFnSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !binOpSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !binFnSyms.values.exists(v => v == (x :: xs).reduce(_ + _)) && !constants.contains((x :: xs).reduce(_ + _)) =>
         EVar((x :: xs).reduce(_ + _))
 
     }
@@ -62,10 +63,17 @@ object NewParser extends RegexParsers{
 
     (opt("-") ~ parseUnFnSimple <~ literal("(")) ~ (parseExpr <~ literal(")")) ^^ {
       case minus ~ typee ~ content =>
+
+
+        val res = typee match{
+          case Sqrt => EBinFn(content, EBinFn(EInt(1), EInt(2), Div), Pow)
+          case _ => EUnFn(content, typee)
+        }
+
         if(minus.isDefined){
-          EBinFn(EInt(-1), EUnFn(content, typee), Mult)
+          EBinFn(EInt(-1), res, Mult)
         }else{
-          EUnFn(content, typee)
+          res
         }
     }
   }
@@ -74,6 +82,17 @@ object NewParser extends RegexParsers{
   def parseDifOp : Parser[Expr] = {
     opt("-") ~ (literal("d/d") ~> parseVarWithoutMinus <~ literal("(")) ~ (parseExpr <~ literal(")")) ^^ {
       case minus ~ variable ~ expr => if(minus.isDefined) EBinFn(EInt(-1), EUnFn(expr, Dif(variable)), Mult) else EUnFn(expr, Dif(variable))
+    }
+  }
+
+  def parsePow : Parser[Expr] = {
+    (opt("-") <~ literal("pow")) ~ (literal("(") ~> ((parseExpr <~ literal(",")) ~ parseExpr) <~ literal(")")) ^^ {
+      case minus ~ (expr1 ~ expr2) =>
+        if(minus.isDefined){
+          EBinFn(EInt(-1), EBinFn(expr1, expr2, Pow), Mult)
+        }else{
+          EBinFn(expr1, expr2, Pow)
+        }
     }
   }
 
@@ -134,6 +153,7 @@ object NewParser extends RegexParsers{
   def parseOpExprNoP : Parser[Expr] = {
       parseInt |
       parseDifOp | //must go before var
+      parsePow |
       parseConst |
       parseVar |
       parseUnFnDefaultNotation
@@ -145,6 +165,7 @@ object NewParser extends RegexParsers{
     literal("(") ~ ( parseLeftAssocOpsOnSameLevel |
                               parseInt                 |
                               parseDifOp | //must go before var
+                              parsePow |
                               parseConst               |
                               parseVar                 |
                           parseUnFnDefaultNotation) ~ literal(")") ^^ {
@@ -156,6 +177,7 @@ object NewParser extends RegexParsers{
     parseLeftAssocOpsOnSameLevel | //must always(or almost always) be first
       parseInt |
       parseDifOp | //must go before var
+      parsePow |
       parseConst |
       parseVar |
       parseUnFnDefaultNotation
