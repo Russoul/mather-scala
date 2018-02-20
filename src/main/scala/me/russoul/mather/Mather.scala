@@ -21,16 +21,21 @@ object Mather {
   def impossible[T <: Any] : T = throw new Exception("impossible happened")
 
 
-  case class FuncDef(binding : EVar, expr : Option[Expr])//f = 2 * x, f is binding, expr is some valid expr or none(if it is none than f is unknown function)
+  case class FuncDef(binding : EVar, expr : Either[Expr, List[EVar]]) extends Expr//is binding, expr is either valid expr that may contain some binding or a list of bindings themselves
+  //e.g 1)f = 2 * x + y, FuncDef(EVar(f), Left(2 * x + y))
+  //    2)f = f(gzi, eta), FuncDef(Evar(f), Right(gzi, eta))    in this case function is unknown, but we still know the bindings
 
-  case class FuncEnv(env : HashMap[EVar, List[EVar]]) //this class contains dependencies of variables; variable may be dependent or independent
+  case class FuncEnv(env : mutable.HashMap[EVar, List[EVar]]) //this class contains dependencies of variables; variable may be dependent or independent
   //e.g: f(x) = x, in this function x is independent variable, f depends on x
   //but
   //f(x, x(y)) = x, in this function x depends on y, y is independent, f explicitly depends on x and implicitly on y
   //FuncEnv must be defined per scope, so it covers multiple expressions
 
+
+  //makeScope function should be used to make a new Scope
+  //defs may be Nil(then env will also contain no bindings)
   case class Scope(defs : List[FuncDef], expr : Expr, env : FuncEnv)
-  //u = u(gzi, eta) //u is a function of gzi and eta, it is unknown, but we can do usefull stuff with it, like differentiation
+  //u = u(gzi, eta) //u is a function of gzi and eta, it is unknown, but we can do useful stuff with it, like differentiation
 
 
   //f = pow(x,2)                           <- f automatically infered as f(x)
@@ -50,6 +55,15 @@ object Mather {
 
   //g = y + 2 * x + 1         //this line tells us that y and x are independent
   //y = 2 * x                 //this line breaks the independence
+
+
+  //example:
+
+  //gzi = gzi(x,y)
+  //eta = eta(x,y)
+
+  //u = u(gzi, eta)
+  //d/dx(u)
 
   //the above ^^ is actually a system of equations
 
@@ -129,6 +143,7 @@ object Mather {
       case Minus => false
       case Mult => true
       case Div => false
+      case Pow => false
     }
   }
 
@@ -138,6 +153,7 @@ object Mather {
       case Minus => false
       case Mult => true
       case Div => false
+      case Pow => false
     }
   }
 

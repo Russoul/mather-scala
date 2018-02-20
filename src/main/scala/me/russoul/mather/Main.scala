@@ -2,8 +2,9 @@ package me.russoul.mather
 
 import cats._
 import cats.implicits._
-import Parser._
+import NewParser._
 import Mather._
+import Helper._
 
 object Main {
 
@@ -35,7 +36,22 @@ object Main {
 
 
   def main(args : Array[String]) : Unit = {
-    ftest2()
+    ftest3()
+  }
+
+  def ftest3(): Unit ={
+
+    val t =
+      List(
+        "u = u(x,y)",
+        "d/dx(u + x + y)"
+
+      ).map(x => parse(x))
+
+    if(t.forall(x => x.successful)){
+      println(makeScope(t.map(x => x.get)))
+    }
+
   }
 
   def ftest2(): Unit ={
@@ -45,8 +61,8 @@ object Main {
     val isZero = (x:Expr) => x == EInt(0)
 
     val tr = parse("dif_t(u + 2 * t + 5 * sqrt(t))")
-    println("parsed: " + tr.isDefined)
-    tr.foreach{x =>
+    println("parsed: " + tr.successful)
+    tr.map{x =>
       println("parsed: " + x.show)
       val e1 = simplify(x)
       println("e1 = " + e1.show)
@@ -67,7 +83,7 @@ object Main {
     val parsed = parse("1 / 2 / 3") //((47 / (-2)) + 1) / 3
     println(s"parsed: ${show(parsed)}")
 
-    parsed.foreach{ x =>
+    parsed.map{ x =>
       println("simplifiable: " + isSimplifiable(parsed.get))
       val simplified = simplifyUsingEquivRules2(x, combos)
       println("========>")

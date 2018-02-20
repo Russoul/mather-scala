@@ -1,13 +1,23 @@
 package me.russoul.mather
 
 import Mather._
+import cats.Show
 
 import scala.collection.mutable
+import scala.util.matching.Regex
 import scala.util.parsing.combinator.RegexParsers
 import scala.util.parsing.input.Positional
 
 object NewParser extends RegexParsers{
+
+
+  override protected val whiteSpace: Regex = """[ ]+""".r
   override val skipWhitespace = true
+
+
+  implicit def showParseResult[T] : Show[ParseResult[T]] = {
+    x => x.toString
+  }
 
   val space = "[ ]"
   val letter = "[a-zA-Z]"
@@ -150,6 +160,25 @@ object NewParser extends RegexParsers{
     }
   }
 
+  def parseFuncSig : Parser[(EVar, List[EVar])] = {
+    parseVarWithoutMinus ~ (literal("(") ~> rep1sep(parseVarWithoutMinus, literal(",")) <~ literal(")")) ^^ {
+      case funcName ~ bindings => (funcName, bindings)
+    }
+  }
+
+  //u = u(x,y) form or
+  //u = pow(sin(x) + y) form
+  def parseFuncDef : Parser[FuncDef] = {
+    (parseVarWithoutMinus <~ literal("=")) ~ (parseFuncSig | parseExpr) ^? {
+      case name ~ smth =>
+        smth match{
+          case sig : (EVar, List[EVar]) if name == sig._1 =>
+            FuncDef(name, Right(sig._2))
+          case expr : Expr => FuncDef(name, Left(expr))
+        }
+    }
+  }
+
 
   def parseOpExprNoP : Parser[Expr] = {
       parseInt |
@@ -176,6 +205,7 @@ object NewParser extends RegexParsers{
 
   def parseExprNoP : Parser[Expr] = {
     parseLeftAssocOpsOnSameLevel | //must always(or almost always) be first
+      parseFuncDef |
       parseInt |
       parseDifOp | //must go before var
       parsePow |
@@ -190,6 +220,10 @@ object NewParser extends RegexParsers{
 
   def parse(str : String) : ParseResult[Expr] = {
     parseAll(parseExpr, str)
+  }
+
+  def parseScope(str : String) : ParseResult[List[Expr]] = {
+    parseAll(rep1sep(parseExpr, regex("\n".r)), str) //TODO fix this
   }
 
 }
