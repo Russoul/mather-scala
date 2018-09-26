@@ -937,7 +937,7 @@ object Mather {
   }
 
 
-  case class Vector(val array : Array[Expr]){
+  case class Vector(array : Array[Expr]){
     def apply(i : Int) : Expr = {
       array(i)
     }
@@ -948,7 +948,7 @@ object Mather {
 
     def simplifyAll() : Vector = {
       val ret = array.clone()
-      for( i <- 0 until array.length){
+      for( i <- array.indices){
         ret(i) = simplifyUsingEquivRules2(this(i), combos)._1
       }
 
@@ -959,7 +959,7 @@ object Mather {
   }
 
   //each op returns a new matrix
-  case class Matrix(val n : Int, val m : Int, val array : Array[Expr]){
+  case class Matrix(n : Int, m : Int, array : Array[Expr]){
     def apply(i : Int, j : Int) : Expr = {
       array(i * m + j)
     }
@@ -1009,7 +1009,7 @@ object Mather {
         ret(i, j) = this(i,j)
       }
 
-      for(i <- 0 until vec.array.length){
+      for(i <- vec.array.indices){
         ret(i, m) = vec(i)
       }
 
@@ -1023,7 +1023,7 @@ object Mather {
   object Matrix{
     def newZeroMatrix(n : Int, m : Int) : Matrix = {
       val ar = new Array[Expr](n * m)
-      for(i <- 0 until ar.length){
+      for(i <- ar.indices){
         ar(i) = EInt(0)
       }
 
@@ -1258,6 +1258,36 @@ object Mather {
     res
   }
 
+  def det2(m : Matrix) : Expr = {
+    require(m.n == 2 && m.m == 2)
+
+    e"(${m(0,0)} * ${m(1,1)}) - (${m(0,1)} * ${m(1,0)})"
+  }
+
+  def minor(m : Matrix, i : Int, j : Int) : Matrix = {
+    require(m.n > 1 && m.m > 1)
+    require(i < m.n && j < m.m)
+    require(i >= 0 && j >= 0)
+
+    val res = new Array[Expr]((m.n - 1) * (m.m - 1))
+    var k = 0
+    for(x <- 0 until m.n){
+      for(y <- 0 until m.m){
+        if(x != i && y != j){
+          res(k) = m(x, y)
+          k += 1
+        }
+      }
+    }
+
+    Matrix(m.n - 1, m.m - 1, res)
+  }
+
+  def det3(m : Matrix) : Expr = {
+    require(m.n == 3, m.m == 3)
+
+    e"${m(0,0)} * ${det2(minor(m, 0,0))} - ${m(0,1)} * ${det2(minor(m, 0, 1))} + ${m(0,2)} * ${det2(minor(m, 0, 2))}"
+  }
 
   /*def perfectSquare(expr: Expr) : Option[Expr] = {
     expr match{

@@ -38,11 +38,36 @@ object Main {
   def main(args : Array[String]) : Unit = {
     //ftest3()
 
-    val e = e"pow(t, 3)/3 - 13*pow(t, 2) + 168 * t"
-    println(simplifyUsingEquivRules2Stages(substitute(e, e"t".asInstanceOf[EVar], EInt(14)), combos).show)
-    val subs = (i : Expr) => substitute(e, EVar("t"), i)
-    val res = e"2 * ${subs(e"12")} - 2 * ${subs(e"14")} + ${subs(e"15")} - ${subs(e"0")}"
-    println(simplifyUsingEquivRules2(res, combos)._1.show)
+    ftest4()
+
+
+  }
+
+  def ftest4() : Unit = {
+    val AO = Array[Expr](
+      e"100 * (1 + 1/2 * N + a)", e"100 * (1 + 1/2 * N)", e"100 * (1 + 1/2*N)",
+      e"(100 + 1/10) * (1 + 1/2 * N)", e"(100 - 1/10) * (1 + 1/2 * N + a)", e"100 * (1 + 1/2 * N)",
+      e"(100 - 1/10) * (1 + 1/2 * N)", e"100 * (1 + 1/2 * N)", e"(100 + 1/10) * (1 + 1/2 * N + a)"
+    )
+
+    val a = e"(52 - 50)/100"
+    val A = AO.map(x => substitute(substitute(x, EVar("N"), EInt(12)), EVar("a"), a))
+    val mat = new Matrix(3, 3, A).simplifyAll()
+    println(mat.show)
+
+    /*val bO = Array[Expr](
+
+    )*/
+
+    println(simplifyUsingEquivRules2(det3(mat), combos).show)
+
+    println(simplifyUsingEquivRules2(det3(
+      new Matrix(3,3, Array(
+        e"3", e"9", e"2",
+        e"0", e"3", e"3",
+        e"0", e"0", e"6"
+      ))
+    ), combos))
   }
 
   def ftest3(): Unit ={
