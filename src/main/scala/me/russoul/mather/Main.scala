@@ -36,7 +36,13 @@ object Main {
 
 
   def main(args : Array[String]) : Unit = {
-    ftest3()
+    //ftest3()
+
+    val e = e"pow(t, 3)/3 - 13*pow(t, 2) + 168 * t"
+    println(simplifyUsingEquivRules2Stages(substitute(e, e"t".asInstanceOf[EVar], EInt(14)), combos).show)
+    val subs = (i : Expr) => substitute(e, EVar("t"), i)
+    val res = e"2 * ${subs(e"12")} - 2 * ${subs(e"14")} + ${subs(e"15")} - ${subs(e"0")}"
+    println(simplifyUsingEquivRules2(res, combos)._1.show)
   }
 
   def ftest3(): Unit ={

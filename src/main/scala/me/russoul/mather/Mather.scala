@@ -251,7 +251,7 @@ object Mather {
 
   def simplifyBinFn(binFn: EBinFn): Expr = {
     val ret = binFn match {
-      case EBinFn(EInt(x), EInt(y), typee) if typee != Pow =>             //<--------  Int # Int, pow handled separately
+      case EBinFn(EInt(x), EInt(y), typee) =>             //<--------  Int # Int
         typee match {
           case Plus => EInt(x + y)
           case Minus => EInt(x - y)
@@ -271,6 +271,11 @@ object Mather {
             if(gcdProc._1 < 0 && gcdProc._2 < 0) EBinFn(EInt(-gcdProc._1), EInt(-gcdProc._2), Div) else EBinFn(EInt(gcdProc._1), EInt(gcdProc._2), Div)
 
           }
+          case Pow =>
+            if(y >= 0)
+              EInt(upow(x, y))
+            else
+              EBinFn(EInt(1), EInt(upow(x, y)), Div)
         }
       case EBinFn(EInt(x), EBinFn(EInt(y), EInt(z),op), Mult) if op == Plus || op == Minus => //distributive property
         EBinFn(EInt(x * y), EInt(x * z), op)
@@ -339,6 +344,9 @@ object Mather {
 
 
 
+        //a/b +- c
+      case EBinFn(EBinFn(a, b, Div), c@EInt(x), typee) if (typee == Plus || typee == Minus) && x != 0 =>
+        EBinFn(EBinFn(a, EBinFn(c, b, Mult), typee), b, Div)
       case EBinFn(a, EBinFn(EInt(b), EInt(c), Div), Div) if c != 0 && b != 0 => //   a / b / c where b and c numbers != 0
         EBinFn(EBinFn(a, EInt(c), Mult), EInt(b), Div)
       case EBinFn(EBinFn(EInt(a), EInt(b), Div), EInt(c), Mult) =>
@@ -370,12 +378,6 @@ object Mather {
           EInt(math.sqrt(x).toInt)
         else
           binFn
-
-      case EBinFn(EInt(x), EInt(n), Pow) =>
-        if(n >= 0)
-          EInt(upow(x, n))
-        else
-          EBinFn(EInt(1), EInt(upow(x, n)), Div)
 
       case _ => binFn
     }
@@ -808,6 +810,31 @@ object Mather {
     //println("done")
     res
 
+
+  }
+
+  def simplifyUsingEquivRules2Stages(expr_ : Expr, ruleCombos : Stream[Expr => Option[Expr]]) : List[Expr] = {
+
+
+    val oneStep = (i : Int) => i < 1
+
+    def perf(expr: Expr) : List[Expr] = {
+      val allPosibilities = applyRules(expr, ruleCombos)
+
+      for(possibility <- allPosibilities){
+        val simpl = simplify(possibility, oneStep)
+
+        if(simpl._2 > 0) return simpl._1 :: perf(simpl._1)
+      }
+
+      Nil
+
+    }
+
+    //println("in")
+    val res = perf(expr_)
+    //println("done")
+    res
 
 
   }
